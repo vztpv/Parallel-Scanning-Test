@@ -20,7 +20,7 @@ Parallel Scanning Test, unstable. has bugs..
     }
 
 
-# distance = int(bool(token.start - (before.start + token.len)));
+# mask = (token.start - (before.start + token.len)) & 1;  #  0 or 1 
 
 
     "\"\ u0000 \""
@@ -29,7 +29,7 @@ Parallel Scanning Test, unstable. has bugs..
 # token 후보
      " \ " \ u0000 \ " "  # token 후보
      1 2 1 2   0   2 1 1  # type
-    (0 0 0 0   1   1 0 0) # distance
+    (0 0 0 0   1   1 0 0) # mask
      1 0 1 0   1   0 1 0  # even : 실제 idx등을 고려하지 않을떄.
      1 0 1 0   0   0 1 0  # even
      0 1 0 1   1   1 0 1  # odd = ~even  
