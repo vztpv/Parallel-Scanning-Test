@@ -12,8 +12,11 @@
 
 int main(void)
 {
-	clau::LoadData::LoadDataFromFile("citylots.json", 0, 0);
+	int a = clock();
+	clau::LoadData::LoadDataFromFile("citylots.json", 0, 0, true);
+	int b = clock();
 
+	std::cout << "test end " << b - a << "ms\n";
 
 	return 0;
 }
