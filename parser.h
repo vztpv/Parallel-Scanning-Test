@@ -150,7 +150,7 @@ namespace clau {
 	public:
 
 		// todo - rename.
-		__forceinline
+		__forceinline // ch is no needed..
 			static Token Get(int64_t position, int64_t length, const char* ch) {
 			Token token;
 
@@ -261,178 +261,180 @@ namespace clau {
 		static void _Scanning(char* text, int64_t num, const int64_t length,
 			Token*& token_arr, int64_t _token_arr_size[2], bool is_last, int _last_state[2]) {
 
-			{
-				int state = 0; // if state == 1 then  \] or \[ ...
+				 {
+					if (1) {
+						int state = 0; // if state == 1 then  \] or \[ ...
 
-				int64_t token_first = 0;
-				int64_t token_last = -1;
+						int64_t token_first = 0;
+						int64_t token_last = -1;
 
-				int64_t token_arr_count = 0;
+						int64_t token_arr_count = 0;
+						
+						for (int64_t i = 0; i < length; ++i) {
 
-				for (int64_t i = 0; i < length; ++i) {
+							const char ch = text[i];
 
-					const char ch = text[i];
+							switch (ch) {
+							case '\"':
+								token_last = i - 1;
+								if (token_last - token_first + 1 > 0) {
+									token_arr[token_arr_count] = Utility::Get(token_first + num, token_last - token_first + 1, text + token_first);
+									token_arr_count++;
+								}
 
-					switch (ch) {
-					case '\"':
-						token_last = i - 1;
-						if (token_last - token_first + 1 > 0) {
-							token_arr[token_arr_count] = Utility::Get(token_first + num, token_last - token_first + 1, text + token_first);
+								token_first = i;
+								token_last = i;
+
+								token_first = i + 1;
+								token_last = i + 1;
+
+								{//
+									token_arr[token_arr_count] = Utility::Get(i + num, 1, text + i);
+									token_arr_count++;
+								}
+								break;
+							case ',':
+								token_last = i - 1;
+								if (token_last - token_first + 1 > 0) {
+									token_arr[token_arr_count] = Utility::Get(token_first + num, token_last - token_first + 1, text + token_first);
+									token_arr_count++;
+								}
+
+								token_first = i;
+								token_last = i;
+
+								token_first = i + 1;
+								token_last = i + 1;
+
+								{//
+									token_arr[token_arr_count] = Utility::Get(i + num, 1, text + i);
+									token_arr_count++;
+								}
+								break;
+							case '\\':
+							{
+								// divide by { } [ ] , : whitespace and (is_last == false) -> no last item is '\\'
+								if (i + 1 < length && (text[i + 1] == '\\' || text[i + 1] == '\"')) {
+									token_arr[token_arr_count] = Utility::Get(i + num, 1, text + i);
+									token_arr_count++;
+									++i;
+									token_arr[token_arr_count] = Utility::Get(i + num, 1, text + i);
+									token_arr_count++;
+
+									token_first = i + 1;
+									token_last = i + 1;
+								}
+							}
+							break;
+
+							case ' ':
+							case '\t':
+							case '\r':
+							case '\v':
+							case '\f':
+							case '\n':
+							{
+								token_last = i - 1;
+								if (token_last - token_first + 1 > 0) {
+									token_arr[token_arr_count] = Utility::Get(token_first + num, token_last - token_first + 1, text + token_first);
+									token_arr_count++;
+								}
+								token_first = i + 1;
+								token_last = i + 1;
+
+							}
+							break;
+							case LoadDataOption::LeftBrace:
+								token_last = i - 1;
+								if (token_last - token_first + 1 > 0) {
+									token_arr[token_arr_count] = Utility::Get(token_first + num, token_last - token_first + 1, text + token_first);
+									token_arr_count++;
+								}
+
+								token_first = i;
+								token_last = i;
+
+								token_arr[token_arr_count] = Utility::Get(token_first + num, token_last - token_first + 1, text + token_first);
+								token_arr_count++;
+
+								token_first = i + 1;
+								token_last = i + 1;
+								break;
+							case LoadDataOption::LeftBracket:
+								token_last = i - 1;
+								if (token_last - token_first + 1 > 0) {
+									token_arr[token_arr_count] = Utility::Get(token_first + num, token_last - token_first + 1, text + token_first);
+									token_arr_count++;
+								}
+
+								token_first = i;
+								token_last = i;
+
+								token_arr[token_arr_count] = Utility::Get(token_first + num, token_last - token_first + 1, text + token_first);
+								token_arr_count++;
+
+								token_first = i + 1;
+								token_last = i + 1;
+								break;
+							case LoadDataOption::RightBrace:
+								token_last = i - 1;
+								if (token_last - token_first + 1 > 0) {
+									token_arr[token_arr_count] = Utility::Get(token_first + num, token_last - token_first + 1, text + token_first);
+									token_arr_count++;
+								}
+								token_first = i;
+								token_last = i;
+
+								token_arr[token_arr_count] = Utility::Get(token_first + num, token_last - token_first + 1, text + token_first);
+								token_arr_count++;
+
+								token_first = i + 1;
+								token_last = i + 1;
+								break;
+							case LoadDataOption::RightBracket:
+								token_last = i - 1;
+								if (token_last - token_first + 1 > 0) {
+									token_arr[token_arr_count] = Utility::Get(token_first + num, token_last - token_first + 1, text + token_first);
+									token_arr_count++;
+								}
+								token_first = i;
+								token_last = i;
+
+								token_arr[token_arr_count] = Utility::Get(token_first + num, token_last - token_first + 1, text + token_first);
+								token_arr_count++;
+
+								token_first = i + 1;
+								token_last = i + 1;
+								break;
+							case LoadDataOption::Assignment:
+								token_last = i - 1;
+								if (token_last - token_first + 1 > 0) {
+									token_arr[token_arr_count] = Utility::Get(token_first + num, token_last - token_first + 1, text + token_first);
+									token_arr_count++;
+								}
+								token_first = i;
+								token_last = i;
+
+								token_arr[token_arr_count] = Utility::Get(token_first + num, token_last - token_first + 1, text + token_first);
+								token_arr_count++;
+
+								token_first = i + 1;
+								token_last = i + 1;
+								break;
+							}
+
+						}
+
+						if (length - 1 - token_first + 1 > 0) {
+							token_arr[token_arr_count] = Utility::Get(token_first + num, length - 1 - token_first + 1, text + token_first);
 							token_arr_count++;
 						}
 
-						token_first = i;
-						token_last = i;
-
-						token_first = i + 1;
-						token_last = i + 1;
-
-						{//
-							token_arr[token_arr_count] = Utility::Get(i + num, 1, text + i);
-							token_arr_count++;
-						}
-						break;
-					case ',':
-						token_last = i - 1;
-						if (token_last - token_first + 1 > 0) {
-							token_arr[token_arr_count] = Utility::Get(token_first + num, token_last - token_first + 1, text + token_first);
-							token_arr_count++;
-						}
-
-						token_first = i;
-						token_last = i;
-
-						token_first = i + 1;
-						token_last = i + 1;
-
-						{//
-							token_arr[token_arr_count] = Utility::Get(i + num, 1, text + i);
-							token_arr_count++;
-						}
-						break;
-					case '\\':
-					{
-						// divide by { } [ ] , : whitespace and (is_last == false) -> no last item is '\\'
-						if (i + 1 < length && (text[i + 1] == '\\' || text[i + 1] == '\"')) {
-							token_arr[token_arr_count] = Utility::Get(i + num, 1, text + i);
-							token_arr_count++;
-							++i;
-							token_arr[token_arr_count] = Utility::Get(i + num, 1, text + i);
-							token_arr_count++;
-
-							token_first = i + 1;
-							token_last = i + 1;
-						}
+						_token_arr_size[0] = token_arr_count;
 					}
-					break;
-
-					case ' ':
-					case '\t':
-					case '\r':
-					case '\v':
-					case '\f':
-					case '\n':
-					case '\0':
-					{
-						token_last = i - 1;
-						if (token_last - token_first + 1 > 0) {
-							token_arr[token_arr_count] = Utility::Get(token_first + num, token_last - token_first + 1, text + token_first);
-							token_arr_count++;
-						}
-						token_first = i + 1;
-						token_last = i + 1;
-
-					}
-					break;
-					case LoadDataOption::LeftBrace:
-						token_last = i - 1;
-						if (token_last - token_first + 1 > 0) {
-							token_arr[token_arr_count] = Utility::Get(token_first + num, token_last - token_first + 1, text + token_first);
-							token_arr_count++;
-						}
-
-						token_first = i;
-						token_last = i;
-
-						token_arr[token_arr_count] = Utility::Get(token_first + num, token_last - token_first + 1, text + token_first);
-						token_arr_count++;
-
-						token_first = i + 1;
-						token_last = i + 1;
-						break;
-					case LoadDataOption::LeftBracket:
-						token_last = i - 1;
-						if (token_last - token_first + 1 > 0) {
-							token_arr[token_arr_count] = Utility::Get(token_first + num, token_last - token_first + 1, text + token_first);
-							token_arr_count++;
-						}
-
-						token_first = i;
-						token_last = i;
-
-						token_arr[token_arr_count] = Utility::Get(token_first + num, token_last - token_first + 1, text + token_first);
-						token_arr_count++;
-
-						token_first = i + 1;
-						token_last = i + 1;
-						break;
-					case LoadDataOption::RightBrace:
-						token_last = i - 1;
-						if (token_last - token_first + 1 > 0) {
-							token_arr[token_arr_count] = Utility::Get(token_first + num, token_last - token_first + 1, text + token_first);
-							token_arr_count++;
-						}
-						token_first = i;
-						token_last = i;
-
-						token_arr[token_arr_count] = Utility::Get(token_first + num, token_last - token_first + 1, text + token_first);
-						token_arr_count++;
-
-						token_first = i + 1;
-						token_last = i + 1;
-						break;
-					case LoadDataOption::RightBracket:
-						token_last = i - 1;
-						if (token_last - token_first + 1 > 0) {
-							token_arr[token_arr_count] = Utility::Get(token_first + num, token_last - token_first + 1, text + token_first);
-							token_arr_count++;
-						}
-						token_first = i;
-						token_last = i;
-
-						token_arr[token_arr_count] = Utility::Get(token_first + num, token_last - token_first + 1, text + token_first);
-						token_arr_count++;
-
-						token_first = i + 1;
-						token_last = i + 1;
-						break;
-					case LoadDataOption::Assignment:
-						token_last = i - 1;
-						if (token_last - token_first + 1 > 0) {
-							token_arr[token_arr_count] = Utility::Get(token_first + num, token_last - token_first + 1, text + token_first);
-							token_arr_count++;
-						}
-						token_first = i;
-						token_last = i;
-
-						token_arr[token_arr_count] = Utility::Get(token_first + num, token_last - token_first + 1, text + token_first);
-						token_arr_count++;
-
-						token_first = i + 1;
-						token_last = i + 1;
-						break;
-					}
-
 				}
-
-				if (length - 1 - token_first + 1 > 0) {
-					token_arr[token_arr_count] = Utility::Get(token_first + num, length - 1 - token_first + 1, text + token_first);
-					token_arr_count++;
-				}
-				
-				_token_arr_size[0] = token_arr_count;
-			}
 		}
+		
 
 		static void _Scanning2(char* text, int64_t num, const int64_t length,
 			Token*& token_arr, int64_t token_arr_size, int64_t _token_arr_size[2], bool is_last, int _last_state[2]) {
@@ -534,7 +536,7 @@ namespace clau {
 					start[i] = length / thr_num * i;
 
 					for (int64_t x = start[i]; x <= length; ++x) {
-						if (Utility::isWhitespace(text[x]) || '\0' == text[x] ||
+						if (Utility::isWhitespace(text[x]) ||
 							LoadDataOption::LeftBracket == text[x] || LoadDataOption::RightBracket == text[x] ||
 							LoadDataOption::Comma == text[x] ||
 							LoadDataOption::LeftBrace == text[x] || LoadDataOption::RightBrace == text[x] ||
@@ -542,6 +544,10 @@ namespace clau {
 
 							start[i] = x;
 							break;
+						}
+						
+						if (x == length) { // meet end of text?
+							return x;
 						}
 					}
 				}
@@ -660,12 +666,14 @@ namespace clau {
 
 			{
 				for (int t = 0; t < thr_num; ++t) {
-					//for (int i = 0; i < token_arr_size[t][0]; ++i) {
-					//	Utility::PrintToken(text, tokens[t][i]);
+					if (0) {
+						for (int i = 0; i < token_arr_size[t][0]; ++i) {
+							Utility::PrintToken(text, tokens[t][i]);
 
-					//	std::cout << "|\n";
-					//	getchar();
-					//}
+							std::cout << "|\n";
+							getchar();
+						}
+					}
 					real_token_arr_count += token_arr_size[t][0];
 				}
 				_token_arr = tokens;
@@ -706,7 +714,7 @@ namespace clau {
 
 							state = 1;
 						}
-						else if (Utility::isWhitespace(ch) || '\0' == ch) {
+						else if (Utility::isWhitespace(ch)) {
 							token_last = i - 1;
 							if (token_last - token_first + 1 > 0) {
 								token_arr[token_arr_count] = Utility::Get(token_first, token_last - token_first + 1, text);
@@ -782,6 +790,11 @@ namespace clau {
 					else if (2 == state) {
 						state = 1;
 					}
+				}
+
+				if (length - 1 - token_first + 1 > 0) {
+					token_arr[token_arr_count] = Utility::Get(token_first, length - 1 - token_first + 1, text);
+					token_arr_count++;
 				}
 
 				token_arr_size = token_arr_count;
