@@ -46,11 +46,11 @@ namespace clau {
 		class BomInfo
 		{
 		public:
-			int64_t bom_size;
+			size_t bom_size;
 			char seq[5];
 		};
 
-		const static int64_t BOM_COUNT = 1;
+		const static size_t BOM_COUNT = 1;
 
 
 		static const BomInfo bomInfo[1];
@@ -60,7 +60,7 @@ namespace clau {
 
 		static BomType ReadBom(FILE* file) {
 			char btBom[5] = { 0, };
-			int64_t readSize = fread(btBom, sizeof(char), 5, file);
+			size_t readSize = fread(btBom, sizeof(char), 5, file);
 
 
 			if (0 == readSize) {
@@ -84,12 +84,12 @@ namespace clau {
 			return type;
 		}
 
-		static BomType ReadBom(const char* contents, int64_t length, BomInfo& outInfo) {
+		static BomType ReadBom(const char* contents, size_t length, BomInfo& outInfo) {
 			char btBom[5] = { 0, };
-			int64_t testLength = length < 5 ? length : 5;
+			size_t testLength = length < 5 ? length : 5;
 			memcpy(btBom, contents, testLength);
 
-			int64_t i, j;
+			size_t i, j;
 			for (i = 0; i < BOM_COUNT; ++i) {
 				const BomInfo& bom = bomInfo[i];
 
@@ -239,7 +239,7 @@ namespace clau {
 	private:
 
 		static void _Scanning(char* text, int64_t num, const int64_t length,
-			Token*& token_arr, int64_t _token_arr_size[2], bool is_last, int _last_state[2]) {
+			Token*& token_arr, size_t _token_arr_size[2], bool is_last, int _last_state[2]) {
 
 			{
 				int state = 0; // if state == 1 then  \] or \[ ...
@@ -247,7 +247,7 @@ namespace clau {
 				int64_t token_first = 0;
 				int64_t token_last = -1;
 
-				int64_t token_arr_count = 0;
+				size_t token_arr_count = 0;
 
 				for (int64_t i = 0; i < length; ++i) {
 
@@ -415,14 +415,14 @@ namespace clau {
 		}
 
 		static void _Scanning2(char* text, int64_t num, const int64_t length,
-			Token*& token_arr, int64_t token_arr_size, int64_t _token_arr_size[2], bool is_last, int _last_state[2]) {
+			Token*& token_arr, size_t token_arr_size, size_t _token_arr_size[2], bool is_last, int _last_state[2]) {
 
 			{
 				auto _text = text - num;
-				int state = 1; int64_t start_idx = 0;
-				int64_t count = 0;
-				for (int64_t j = 0; j < token_arr_size; ++j) {
-					int64_t i = j;
+				int state = 1; size_t start_idx = 0;
+				size_t count = 0;
+				for (size_t j = 0; j < token_arr_size; ++j) {
+					size_t i = j;
 
 					if (state == 0) {
 						if (Utility::GetType(token_arr[i], _text) == TokenType::QUOTED) {
@@ -459,10 +459,10 @@ namespace clau {
 
 			{
 				auto _text = text - num;
-				int state = 0; int64_t start_idx = 0;
-				int64_t count = 0;
-				for (int64_t j = 0; j < token_arr_size; ++j) {
-					int64_t i = j;
+				int state = 0; size_t start_idx = 0;
+				size_t count = 0;
+				for (size_t j = 0; j < token_arr_size; ++j) {
+					size_t i = j;
 
 					if (state == 0) {
 						if (Utility::GetType(token_arr[i], _text) == TokenType::QUOTED) {
@@ -499,12 +499,12 @@ namespace clau {
 		}
 
 
-		static void ScanningNew(char* text, int64_t length, const int thr_num,
-			std::vector<Token*>&_token_arr, int64_t& _token_arr_size, bool use_simd)
+		static void ScanningNew(char* text, size_t length, const int thr_num,
+			Token* _tokens_orig, std::vector<Token*>& _token_arr, size_t& _token_arr_size, bool use_simd)
 		{
 			std::vector<std::thread> thr(thr_num);
-			std::vector<int64_t> start(thr_num);
-			std::vector<int64_t> last(thr_num);
+			std::vector<size_t> start(thr_num);
+			std::vector<size_t> last(thr_num);
 
 			{
 				start[0] = 0;
@@ -512,16 +512,14 @@ namespace clau {
 				for (int i = 1; i < thr_num; ++i) {
 					start[i] = length / thr_num * i;
 
-					for (int64_t x = start[i]; x <= length; ++x) {
+					for (size_t x = start[i]; x <= length; ++x) {
 						if (Utility::isWhitespace(text[x]) || '\0' == text[x] ||
 							LoadDataOption::LeftBracket == text[x] || LoadDataOption::RightBracket == text[x] ||
 							LoadDataOption::Comma == text[x] ||
 							LoadDataOption::LeftBrace == text[x] || LoadDataOption::RightBrace == text[x] ||
 							LoadDataOption::Assignment == text[x]) {
-							if (x > 0 && text[x - 1] == '\\') {
-								continue;
-							}
-							start[i] = x;		
+
+							start[i] = x;
 							break;
 						}
 					}
@@ -532,18 +530,22 @@ namespace clau {
 
 				last[thr_num - 1] = length + 1;
 			}
-			int64_t real_token_arr_count = 0;
+			size_t real_token_arr_count = 0;
 
-			std::vector<Token*> tokens(thr_num); // (Token*)calloc(length + 1, sizeof(Token));
-
+			Token* tokens_orig = (Token*)calloc(2 * (length + 1 + thr_num), sizeof(Token));
+			std::vector<Token*> tokens(thr_num);
+			tokens[0] = tokens_orig;
+			for (int64_t i = 1; i < thr_num; ++i) {
+				tokens[i] = tokens[i - 1] + 2 * (last[i] - start[i]);
+			}
+			
 			int64_t token_count = 0;
 
-			std::vector<int64_t[2]> token_arr_size(thr_num);
+			std::vector<size_t[2]> token_arr_size(thr_num);
 			std::vector<int[2]> last_state(thr_num);
 			
 			auto a = std::chrono::steady_clock::now();
 			for (int i = 0; i < thr_num; ++i) {
-				tokens[i] = (Token*)calloc(((last[i] - start[i]) * 2 + 2), sizeof(Token));
 				thr[i] = std::thread(_Scanning, text + start[i], start[i], last[i] - start[i], std::ref(tokens[i]), std::ref(token_arr_size[i]), 
 					i == thr_num - 1, last_state[i]); 
 			}
@@ -614,24 +616,25 @@ namespace clau {
 
 			{
 				for (int t = 0; t < thr_num; ++t) {
-				//	for (int i = 0; i < token_arr_size[t][0]; ++i) {
-				//		Utility::PrintToken(text, tokens[t][i]);
+					//for (int i = 0; i < token_arr_size[t][0]; ++i) {
+					//	Utility::PrintToken(text, tokens[t][i]);
 
-				//		std::cout << "|\n";
-						////	getchar();
-				//	}
+					//	std::cout << "|\n";
+					//	getchar();
+					//}
 					real_token_arr_count += token_arr_size[t][0];
 				}
 				_token_arr = tokens;
 				_token_arr_size = real_token_arr_count;
+				_tokens_orig = tokens_orig;
 			}
 		}
 
-		static void Scanning(char* text, const int64_t length,
-			Token*& _token_arr, int64_t& _token_arr_size) {
+		static void Scanning(char* text, const size_t length,
+			Token*& _token_arr, size_t& _token_arr_size) {
 
 			Token* token_arr = (Token*)calloc(length + 1, sizeof(Token));
-			int64_t token_arr_size = 0;
+			size_t token_arr_size = 0;
 
 			{
 				int state = 0;
@@ -639,9 +642,9 @@ namespace clau {
 				int64_t token_first = 0;
 				int64_t token_last = -1;
 
-				int64_t token_arr_count = 0;
+				size_t token_arr_count = 0;
 
-				for (int64_t i = 0; i <= length; ++i) {
+				for (size_t i = 0; i <= length; ++i) {
 					const char ch = text[i];
 
 					if (0 == state) {
@@ -749,22 +752,22 @@ namespace clau {
 		}
 
 		static std::pair<bool, int> Scan(FILE* inFile, int thr_num,
-			char*& _buffer, int64_t* _buffer_len, std::vector<Token*>&_token_arr, int64_t* _token_arr_len, bool use_simd)
+			char*& _buffer, size_t* _buffer_len, Token*& _token_orig, std::vector<Token*>& _token_arr, size_t* _token_arr_len, bool use_simd)
 		{
 			if (inFile == nullptr) {
 				return { false, 0 };
 			}
 
 			int64_t* arr_count = nullptr; //
-			int64_t arr_count_size = 0;
+			size_t arr_count_size = 0;
 
 			std::string temp;
 			char* buffer = nullptr;
-			int64_t file_length;
+			size_t file_length;
 
 			{
 				fseek(inFile, 0, SEEK_END);
-				int64_t length = ftell(inFile);
+				size_t length = ftell(inFile);
 				fseek(inFile, 0, SEEK_SET);
 
 				Utility::BomType x = Utility::ReadBom(inFile);
@@ -786,10 +789,10 @@ namespace clau {
 				buffer[file_length] = '\0';
 
 				{
-					int64_t token_arr_size;
+					size_t token_arr_size;
 
 					{
-						ScanningNew(buffer, file_length, thr_num, _token_arr, token_arr_size, use_simd);
+						ScanningNew(buffer, file_length, thr_num, _token_orig, _token_arr, token_arr_size, use_simd);
 						//Token* token_arr = nullptr;
 						//Scanning(buffer, file_length, token_arr, token_arr_size);
 					}
@@ -813,9 +816,9 @@ namespace clau {
 			this->use_simd = use_simd;
 		}
 	public:
-		bool operator() (int thr_num, char*& buffer, int64_t* buffer_len, std::vector<Token*>&token_arr, int64_t* token_arr_len)
+		bool operator() (int thr_num, char*& buffer, size_t* buffer_len, Token* token_orig, std::vector<Token*>& token_arr, size_t* token_arr_len)
 		{
-			bool x = Scan(pInFile, thr_num, buffer, buffer_len, token_arr, token_arr_len, use_simd).second > 0;
+			bool x = Scan(pInFile, thr_num, buffer, buffer_len, token_orig, token_arr, token_arr_len, use_simd).second > 0;
 
 			return x;
 		}
@@ -860,10 +863,11 @@ namespace clau {
 
 				InFileReserver ifReserver(inFile, use_simd);
 				char* buffer = nullptr;
-				int64_t buffer_len, token_arr_len;
+				size_t buffer_len, token_arr_len;
 				std::vector<Token*> token_arr;
+				Token* token_orig = nullptr;
 
-				ifReserver(lex_thr_num, buffer, &buffer_len, token_arr, &token_arr_len);
+				ifReserver(lex_thr_num, buffer, &buffer_len, token_orig, token_arr, &token_arr_len);
 
 
 				int b = clock();
@@ -874,9 +878,7 @@ namespace clau {
 
 				fclose(inFile);
 
-				for (int i = 0; i < token_arr.size(); ++i) {
-					free(token_arr[i]);
-				}
+				free(token_orig);
 			}
 			catch (const char* err) { std::cout << err << "\n"; fclose(inFile); return false; }
 			catch (const std::string& e) { std::cout << e << "\n"; fclose(inFile); return false; }
