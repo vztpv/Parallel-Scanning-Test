@@ -14,9 +14,10 @@
 
 int main(void)
 {
+	clau::LoadData test;
+
 	for (int i = 0; i < 8; ++i) {
 		int a = clock();
-		clau::LoadData test;
 		test.LoadDataFromFile("citylots.json", 0, 0, true);
 		int b = clock();
 

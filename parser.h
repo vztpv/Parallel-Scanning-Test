@@ -519,7 +519,7 @@ namespace clau {
 		}
 
 
-		static void ScanningNew(char* text, int64_t length, const int thr_num,
+		static bool ScanningNew(char* text, int64_t length, const int thr_num,
 			Token*& _tokens_orig, int64_t& _tokens_orig_size, std::vector<Token*>& _token_arr, int64_t& _token_arr_size, bool use_simd)
 		{
 			std::vector<std::thread> thr(thr_num);
@@ -571,6 +571,10 @@ namespace clau {
 			else {
 				tokens_orig = (Token*)calloc(2 * (length + 1 + thr_num), sizeof(Token));
 				_tokens_orig_size = 2 * (length + 1 + thr_num);
+			}
+
+			if (!tokens_orig) {
+				return false;
 			}
 
 			std::vector<Token*> tokens(thr_num);
@@ -668,6 +672,8 @@ namespace clau {
 				_token_arr_size = real_token_arr_count;
 				_tokens_orig = tokens_orig;
 			}
+
+			return true;
 		}
 
 		static void Scanning(char* text, const int64_t length,
@@ -822,16 +828,22 @@ namespace clau {
 				
 				if (_buffer) {
 					if (_buffer_len < length) {
-						delete[] _buffer;
-						buffer = new char[file_length + 1];
+						delete[] _buffer; _buffer = nullptr;
+						buffer = new (std::nothrow)char[file_length + 1];
 					}
 					else {
 						buffer = _buffer;
 					}
 				}
 				else {
-					buffer = new char[file_length + 1]; // 
+					buffer = new (std::nothrow)char[file_length + 1]; // 
 				}
+
+				if (!buffer) {
+					fclose(inFile);
+					return { false, 1 };
+				}
+
 				int a = clock();
 				// read data as a block:
 				fread(buffer, sizeof(char), file_length, inFile);
@@ -879,10 +891,9 @@ namespace clau {
 				return false;
 			}
 
+			// in Scan, close inFile;
 			bool x = Scan(inFile, thr_num, buffer, buffer_len, token_orig, token_orig_len, token_arr, token_arr_len, false).second > 0;
 			
-			fclose(inFile);
-
 			return x;
 		}
 	};
