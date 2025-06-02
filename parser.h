@@ -236,6 +236,26 @@ namespace clau {
 
 	class InFileReserver
 	{
+	private: 
+		char* buffer = nullptr;
+		int64_t buffer_len = 0;
+		Token* token_orig = nullptr;
+		int64_t token_orig_len = 0;
+
+	public:
+		~InFileReserver() {
+			if (buffer) {
+				delete[] (buffer);
+			}
+			if (token_orig) {
+				free(token_orig);
+			}
+		}
+
+	private:
+		InFileReserver(const InFileReserver&) = delete;
+		InFileReserver& operator=(const InFileReserver&) = delete;
+	
 	private:
 
 		static void _Scanning(char* text, int64_t num, const int64_t length,
@@ -500,12 +520,13 @@ namespace clau {
 
 
 		static void ScanningNew(char* text, int64_t length, const int thr_num,
-			Token* _tokens_orig, std::vector<Token*>& _token_arr, int64_t& _token_arr_size, bool use_simd)
+			Token*& _tokens_orig, int64_t& _tokens_orig_size, std::vector<Token*>& _token_arr, int64_t& _token_arr_size, bool use_simd)
 		{
 			std::vector<std::thread> thr(thr_num);
 			std::vector<int64_t> start(thr_num);
 			std::vector<int64_t> last(thr_num);
 
+			
 			{
 				start[0] = 0;
 
@@ -531,8 +552,27 @@ namespace clau {
 				last[thr_num - 1] = length + 1;
 			}
 			int64_t real_token_arr_count = 0;
+				
+			auto a = std::chrono::steady_clock::now();
+			Token* tokens_orig = nullptr;
+			int64_t now_capacity = 2 * (length + 1 + thr_num);
 
-			Token* tokens_orig = (Token*)calloc(2 * (length + 1 + thr_num), sizeof(Token));
+			if (_tokens_orig) {
+				if (now_capacity <= _tokens_orig_size) {
+					tokens_orig = _tokens_orig;
+				}
+				else {
+					free(_tokens_orig);
+
+					tokens_orig = (Token*)calloc(2 * (length + 1 + thr_num), sizeof(Token));
+					_tokens_orig_size = 2 * (length + 1 + thr_num);
+				}
+			}
+			else {
+				tokens_orig = (Token*)calloc(2 * (length + 1 + thr_num), sizeof(Token));
+				_tokens_orig_size = 2 * (length + 1 + thr_num);
+			}
+
 			std::vector<Token*> tokens(thr_num);
 			tokens[0] = tokens_orig;
 			for (int64_t i = 1; i < thr_num; ++i) {
@@ -544,7 +584,7 @@ namespace clau {
 			std::vector<int64_t[2]> token_arr_size(thr_num);
 			std::vector<int[2]> last_state(thr_num);
 			
-			auto a = std::chrono::steady_clock::now();
+			
 			for (int i = 0; i < thr_num; ++i) {
 				thr[i] = std::thread(_Scanning, text + start[i], start[i], last[i] - start[i], std::ref(tokens[i]), std::ref(token_arr_size[i]), 
 					i == thr_num - 1, last_state[i]); 
@@ -752,7 +792,8 @@ namespace clau {
 		}
 
 		static std::pair<bool, int> Scan(FILE* inFile, int thr_num,
-			char*& _buffer, int64_t* _buffer_len, Token*& _token_orig, std::vector<Token*>& _token_arr, int64_t* _token_arr_len, bool use_simd)
+			char*& _buffer, int64_t& _buffer_len, Token*& _token_orig, int64_t& _token_orig_len, 
+			std::vector<Token*>& _token_arr, int64_t& _token_arr_len, bool use_simd)
 		{
 			if (inFile == nullptr) {
 				return { false, 0 };
@@ -778,8 +819,19 @@ namespace clau {
 				}
 
 				file_length = length;
-				buffer = new char[file_length + 1]; // 
-
+				
+				if (_buffer) {
+					if (_buffer_len < length) {
+						delete[] _buffer;
+						buffer = new char[file_length + 1];
+					}
+					else {
+						buffer = _buffer;
+					}
+				}
+				else {
+					buffer = new char[file_length + 1]; // 
+				}
 				int a = clock();
 				// read data as a block:
 				fread(buffer, sizeof(char), file_length, inFile);
@@ -792,42 +844,59 @@ namespace clau {
 					int64_t token_arr_size;
 
 					{
-						ScanningNew(buffer, file_length, thr_num, _token_orig, _token_arr, token_arr_size, use_simd);
+						ScanningNew(buffer, file_length, thr_num, _token_orig, _token_orig_len, _token_arr, token_arr_size, use_simd);
 						//Token* token_arr = nullptr;
 						//Scanning(buffer, file_length, token_arr, token_arr_size);
 					}
 
 					_buffer = buffer;
-					*_token_arr_len = token_arr_size;
-					*_buffer_len = file_length;
+					_token_arr_len = token_arr_size;
+					_buffer_len = file_length;
 				}
 			}
 
 			return{ true, 1 };
 		}
 
-	private:
-		FILE* pInFile;
-		bool use_simd;
 	public:
-		explicit InFileReserver(FILE* inFile, bool use_simd)
+		explicit InFileReserver()
 		{
-			pInFile = inFile;
-			this->use_simd = use_simd;
+			//
 		}
 	public:
-		bool operator() (int thr_num, char*& buffer, int64_t* buffer_len, Token* token_orig, std::vector<Token*>& token_arr, int64_t* token_arr_len)
+		bool operator() (const std::string& fileName, int thr_num, std::vector<Token*>& token_arr, int64_t& token_arr_len)
 		{
-			bool x = Scan(pInFile, thr_num, buffer, buffer_len, token_orig, token_arr, token_arr_len, use_simd).second > 0;
+			FILE* inFile = nullptr;
+
+#ifdef _WIN32 
+			fopen_s(&inFile, fileName.c_str(), "rb");
+#else
+			inFile = fopen(fileName.c_str(), "rb");
+#endif
+
+			if (!inFile)
+			{
+				return false;
+			}
+
+			bool x = Scan(inFile, thr_num, buffer, buffer_len, token_orig, token_orig_len, token_arr, token_arr_len, false).second > 0;
+			
+			fclose(inFile);
 
 			return x;
 		}
 	};
+
 	class LoadData
 	{
-
+	private:
+		InFileReserver ifReserver;
 	public:
-		static bool LoadDataFromFile(const std::string& fileName, int lex_thr_num = 1, int parse_thr_num = 1, bool use_simd = false) /// global should be empty
+		LoadData() {
+			//
+		}
+	public:
+		bool LoadDataFromFile(const std::string& fileName, int lex_thr_num = 1, int parse_thr_num = 1, bool use_simd = false) /// global should be empty
 		{
 			if (lex_thr_num <= 0) {
 				lex_thr_num = std::thread::hardware_concurrency();
@@ -846,44 +915,21 @@ namespace clau {
 			int a = clock();
 
 			bool success = true;
-			FILE* inFile;
-
-#ifdef _WIN32 
-			fopen_s(&inFile, fileName.c_str(), "rb");
-#else
-			inFile = fopen(fileName.c_str(), "rb");
-#endif
-
-			if (!inFile)
-			{
-				return false;
-			}
 
 			try {
-
-				InFileReserver ifReserver(inFile, use_simd);
-				char* buffer = nullptr;
-				int64_t buffer_len, token_arr_len;
+				int64_t token_arr_len;
 				std::vector<Token*> token_arr;
-				Token* token_orig = nullptr;
 
-				ifReserver(lex_thr_num, buffer, &buffer_len, token_orig, token_arr, &token_arr_len);
-
+				ifReserver(fileName, lex_thr_num, token_arr, token_arr_len);
 
 				int b = clock();
 
 				std::cout << b - a << "ms\n";
-
-				delete[] buffer;
-
-				fclose(inFile);
-
-				free(token_orig);
 			}
-			catch (const char* err) { std::cout << err << "\n"; fclose(inFile); return false; }
-			catch (const std::string& e) { std::cout << e << "\n"; fclose(inFile); return false; }
-			catch (const std::exception& e) { std::cout << e.what() << "\n"; fclose(inFile); return false; }
-			catch (...) { std::cout << "not expected error" << "\n"; fclose(inFile); return false; }
+			catch (const char* err) { std::cout << err << "\n"; return false; }
+			catch (const std::string& e) { std::cout << e << "\n"; return false; }
+			catch (const std::exception& e) { std::cout << e.what() << "\n"; return false; }
+			catch (...) { std::cout << "not expected error" << "\n"; return false; }
 
 			return true;
 		}
