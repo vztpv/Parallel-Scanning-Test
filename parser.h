@@ -437,7 +437,7 @@ namespace clau {
 		
 
 		static void _Scanning2(char* text, int64_t num, const int64_t length,
-			Token*& token_arr, int64_t token_arr_size, int64_t _token_arr_size[2], bool is_last, int _last_state[2]) {
+			Token*& token_arr, int64_t token_arr_size, int64_t _token_arr_size[2], bool is_last, int _last_state[2], int id) {
 
 			{
 				auto _text = text - num;
@@ -521,7 +521,7 @@ namespace clau {
 		}
 
 
-		static bool ScanningNew(char* text, int64_t length, const int thr_num,
+		static bool ScanningNew(char* text, int64_t length, int thr_num,
 			Token*& _tokens_orig, int64_t& _tokens_orig_size, std::vector<Token*>& _token_arr, int64_t& _token_arr_size, bool use_simd)
 		{
 			std::vector<std::thread> thr(thr_num);
@@ -551,6 +551,16 @@ namespace clau {
 						}
 					}
 				}
+
+				std::set<int64_t> _set;
+				_set.insert(start.begin(), start.end());
+
+				thr_num = _set.size();
+				start.clear();
+				for (auto x : _set) {
+					start.push_back(x);
+				}
+
 				for (int i = 0; i < thr_num - 1; ++i) {
 					last[i] = start[i + 1];
 				}
@@ -561,7 +571,7 @@ namespace clau {
 				
 			auto a = std::chrono::steady_clock::now();
 			Token* tokens_orig = nullptr;
-			int64_t now_capacity = 2 * (length + 1 + thr_num);
+			int64_t now_capacity = 2 * (length + 1);
 
 			if (_tokens_orig) {
 				if (now_capacity <= _tokens_orig_size) {
@@ -570,13 +580,13 @@ namespace clau {
 				else {
 					free(_tokens_orig);
 
-					tokens_orig = (Token*)calloc(2 * (length + 1 + thr_num), sizeof(Token));
-					_tokens_orig_size = 2 * (length + 1 + thr_num);
+					tokens_orig = (Token*)calloc(2 * (length + 1), sizeof(Token));
+					_tokens_orig_size = 2 * (length + 1);
 				}
 			}
 			else {
-				tokens_orig = (Token*)calloc(2 * (length + 1 + thr_num), sizeof(Token));
-				_tokens_orig_size = 2 * (length + 1 + thr_num);
+				tokens_orig = (Token*)calloc(2 * (length + 1), sizeof(Token));
+				_tokens_orig_size = 2 * (length + 1);
 			}
 
 			if (!tokens_orig) {
@@ -586,7 +596,7 @@ namespace clau {
 			std::vector<Token*> tokens(thr_num);
 			tokens[0] = tokens_orig;
 			for (int64_t i = 1; i < thr_num; ++i) {
-				tokens[i] = tokens[i - 1] + 2 * (last[i] - start[i]);
+				tokens[i] = tokens[i - 1] + 2 * (last[i - 1] - start[i - 1]);
 			}
 			
 			int64_t token_count = 0;
@@ -605,15 +615,16 @@ namespace clau {
 			}
 			auto b = std::chrono::steady_clock::now();
 
+
 			{
 				int i = 0;
 				thr[i] = std::thread(_Scanning2, text + start[i], start[i], last[i] - start[i], std::ref(tokens[i]), token_arr_size[i][0], std::ref(token_arr_size[i]),
-					i == thr_num - 1, last_state[i]);
+					i == thr_num - 1, last_state[i], i);
 			}
 
 			for (int i = 1; i < thr_num; ++i) {
 				thr[i] = std::thread(_Scanning2, text + start[i], start[i], last[i] - start[i], std::ref(tokens[i]), token_arr_size[i][0], std::ref(token_arr_size[i]),
-					i == thr_num - 1, last_state[i]);
+					i == thr_num - 1, last_state[i], i);
 			}
 
 			for (int i = 0; i < thr_num; ++i) {
@@ -666,7 +677,7 @@ namespace clau {
 
 			{
 				for (int t = 0; t < thr_num; ++t) {
-					if (0) {
+					if (1) {
 						for (int i = 0; i < token_arr_size[t][0]; ++i) {
 							Utility::PrintToken(text, tokens[t][i]);
 

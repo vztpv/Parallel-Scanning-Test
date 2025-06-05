@@ -1,6 +1,4 @@
 ﻿
-#define USE_SIMD
-
 #include "mimalloc-new-delete.h"
 
 
@@ -18,7 +16,7 @@ int main(void)
 
 	for (int i = 0; i < 8; ++i) {
 		int a = clock();
-		test.LoadDataFromFile("citylots.json", 0, 0, true);
+		test.LoadDataFromFile("test.json", 0, 0, true);
 		int b = clock();
 
 		std::cout << "test end " << b - a << "ms\n";
