@@ -7,4 +7,6 @@ Parallel Scanning Test using std::thread
 4. first_state is zero
 5. construct last_state[thr_num][2] // used thread num
 6. next_start_state = last_state[t][start_state];
-   
+# ToDo?
+1. chk utf-8
+2. chk valid of \uXXXX ?
