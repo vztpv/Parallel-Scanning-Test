@@ -10,3 +10,4 @@ Parallel Scanning Test using std::thread
 # ToDo?
 1. chk utf-8
 2. chk \uXXXX ?
+3. string->int64_t, double?
