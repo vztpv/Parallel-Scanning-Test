@@ -1,4 +1,4 @@
-﻿
+
 
 
 
@@ -428,7 +428,9 @@ namespace clau {
 							state = 0;
 						}
 						else if (Utility::GetType(token_arr[i], _text) == TokenType::BACK_SLUSH) {
-							++j;
+							if (token_arr[i].start() + 1 == token_arr[i + 1].start()) {
+								++j;
+							}
 						}
 					}
 				}
@@ -468,7 +470,9 @@ namespace clau {
 							state = 0;
 						}
 						else if (Utility::GetType(token_arr[i], _text) == TokenType::BACK_SLUSH) {
-							++j;
+							if (token_arr[i].start() + 1 == token_arr[i + 1].start()) {
+								++j;
+							}
 						}
 					}
 				}
