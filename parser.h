@@ -243,14 +243,13 @@ namespace clau {
 			return TokenType::END;
 		}
 
-		static void PrintToken(const char* buffer, Token token) {
-			//std::ofstream outfile("output.txt", std::ios::app);
-
-			std::cout << std::string_view(buffer + token.start(), token.len());
-			//	outfile << std::string_view(buffer + token.start(), token.len()) << "\n";
+		static void PrintToken(std::ostream& out, const char* buffer, Token token) {
+			if (out) {
+				//std::cout << std::string_view(buffer + token.start(), token.len());
+				out << std::string_view(buffer + token.start(), token.len()) << "\n";
 				//std::cout << Utility::GetIdx(token) << " " << Utility::GetLength(token) << "\n";
 				//std::cout << std::string_view(buffer + Utility::GetIdx(token), Utility::GetLength(token));
-			//	outfile.close();
+			}
 		}
 	};
 
@@ -283,7 +282,100 @@ namespace clau {
 		static void _Scanning(char* text, int64_t num, const int64_t length,
 			Token*& token_arr, std::array<int64_t, 2>& _token_arr_size, bool is_last, std::array<int, 2>& _last_state) {
 
-				 {
+				if (1) {
+					if (length <= 0) {
+						_token_arr_size[0] = 0;
+						return;
+					}
+
+					int64_t token_arr_count = 0;
+					int64_t token_first = 0;
+
+					char* p = text;
+					char* end = text + length;
+
+					// flush helper
+					auto flush = [&](int64_t end_index) {
+						int64_t len = end_index - token_first;
+						if (len > 0) {
+							token_arr[token_arr_count++] =
+								Utility::Get(token_first + num, len, text + token_first);
+						}
+						};
+
+					while (p < end) {
+						char ch = *p;
+						int64_t i = p - text;
+
+						switch (ch) {
+
+						case ' ':
+						case '\t':
+						case '\r':
+						case '\v':
+						case '\f':
+						case '\n':
+							flush(i);
+							token_first = i + 1;
+							break;
+
+						case '"':
+						case ',':
+							flush(i);
+							token_arr[token_arr_count++] =
+								Utility::Get(i + num, 1, p);
+							token_first = i + 1;
+							break;
+
+						case '\\':
+						{
+							flush(i);
+
+							if (p + 1 < end && (p[1] == '\\' || p[1] == '"')) {
+								token_arr[token_arr_count++] =
+									Utility::Get(i + num, 1, p);
+
+								++p;
+								++i;
+
+								token_arr[token_arr_count++] =
+									Utility::Get(i + num, 1, p);
+
+								token_first = i + 1;
+							}
+						}
+						break;
+
+						case LoadDataOption::LeftBrace:
+						case LoadDataOption::LeftBracket:
+						case LoadDataOption::RightBrace:
+						case LoadDataOption::RightBracket:
+						case LoadDataOption::Assignment:
+							flush(i);
+							token_arr[token_arr_count++] =
+								Utility::Get(i + num, 1, p);
+							token_first = i + 1;
+							break;
+						}
+
+						++p;
+					}
+
+					flush(length);
+					_token_arr_size[0] = token_arr_count;
+					return;
+				}
+
+				{
+					static bool is_space[256] = { false };
+
+					is_space[' '] = true;
+					is_space['\t'] = true;
+					is_space['\r'] = true;
+					is_space['\v'] = true;
+					is_space['\f'] = true;
+					is_space['\n'] = true;
+
 					if (1) {
 						int state = 0; // if state == 1 then  \] or \[ ...
 
@@ -291,10 +383,20 @@ namespace clau {
 						int64_t token_last = -1;
 
 						int64_t token_arr_count = 0;
-						
+
 						for (int64_t i = 0; i < length; ++i) {
 
 							const char ch = text[i];
+
+							if (is_space[ch]) {
+								token_last = i - 1;
+								if (token_last - token_first + 1 > 0) {
+									token_arr[token_arr_count] = Utility::Get(token_first + num, token_last - token_first + 1, text + token_first);
+									token_arr_count++;
+								}
+								token_first = i + 1;
+								token_last = i + 1;
+							}
 
 							switch (ch) {
 							case '\"':
@@ -346,24 +448,6 @@ namespace clau {
 									token_first = i + 1;
 									token_last = i + 1;
 								}
-							}
-							break;
-
-							case ' ':
-							case '\t':
-							case '\r':
-							case '\v':
-							case '\f':
-							case '\n':
-							{
-								token_last = i - 1;
-								if (token_last - token_first + 1 > 0) {
-									token_arr[token_arr_count] = Utility::Get(token_first + num, token_last - token_first + 1, text + token_first);
-									token_arr_count++;
-								}
-								token_first = i + 1;
-								token_last = i + 1;
-
 							}
 							break;
 							case LoadDataOption::LeftBrace:
@@ -539,7 +623,7 @@ namespace clau {
 					last[i] = start[i + 1];
 				}
 
-				last[thr_num - 1] = length + 1;
+				last[thr_num - 1] = length;
 			}
 			int64_t real_token_arr_count = 0;
 				
@@ -650,17 +734,22 @@ namespace clau {
 			std::cout << "state is " << state << "\n";
 
 			{
-				for (int t = 0; t < thr_num; ++t) {
-					if (0) {
-						for (int i = 0; i < token_arr_size[t][0]; ++i) {
-							Utility::PrintToken(text, tokens[t][i]);
+				//std::ofstream outfile("output.txt");
 
-							std::cout << "|\n";
-							getchar();
-						}
+				//if (outfile) {
+					for (int t = 0; t < thr_num; ++t) {
+					//	if (1) {
+					//		for (int i = 0; i < token_arr_size[t][0]; ++i) {
+					//			Utility::PrintToken(outfile, text, tokens[t][i]);
+								//	std::cout << "|\n";
+								//	getchar();
+					//		}
+					//	}
+						real_token_arr_count += token_arr_size[t][0];
 					}
-					real_token_arr_count += token_arr_size[t][0];
-				}
+					//outfile.close();
+				//}
+
 				_token_arr = tokens;
 				_token_arr_size = real_token_arr_count;
 				_tokens_orig = tokens_orig;
