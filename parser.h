@@ -329,8 +329,7 @@ namespace clau {
 
 						case '\\':
 						{
-							flush(i);
-
+							//flush(i);
 							if (p + 1 < end && (p[1] == '\\' || p[1] == '"')) {
 								token_arr[token_arr_count++] =
 									Utility::Get(i + num, 1, p);
