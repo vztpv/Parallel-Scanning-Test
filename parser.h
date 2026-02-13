@@ -428,6 +428,9 @@ namespace clau {
 							state = 0;
 						}
 						else if (Utility::GetType(token_arr[i], _text) == TokenType::BACK_SLUSH) {
+							if (is_last && i + 1 >= token_arr_size) {
+								break;
+							}
 							if (token_arr[i].start() + 1 == token_arr[i + 1].start()) {
 								++j;
 							}
@@ -470,6 +473,9 @@ namespace clau {
 							state = 0;
 						}
 						else if (Utility::GetType(token_arr[i], _text) == TokenType::BACK_SLUSH) {
+							if (is_last && i + 1 >= token_arr_size) {
+								break;
+							}
 							if (token_arr[i].start() + 1 == token_arr[i + 1].start()) {
 								++j;
 							}
@@ -515,7 +521,7 @@ namespace clau {
 						}
 						
 						if (x == length) { // meet end of text?
-							return x;
+							return false; // 
 						}
 					}
 				}
