@@ -1,4 +1,4 @@
-
+﻿
 
 
 
@@ -22,15 +22,21 @@
 
 namespace clau {
 
-	struct Token { 
-	private: 
-		uint32_t _start; 
+	struct Token {
+	private:
+		uint32_t _start;
 		uint32_t _len;
 	public:
 		uint32_t& start() {
 			return _start;
 		}
 		uint32_t& len() {
+			return _len;
+		}
+		uint32_t start() const {
+			return _start;
+		}
+		uint32_t len() const {
 			return _len;
 		}
 	};
@@ -180,67 +186,42 @@ namespace clau {
 			token.len() = length;
 			token.start() = position;
 
-			
 			return token;
 		}
 
-		__forceinline 
-		static TokenType GetType(Token token, const char* buf) {
-			{
-				char ch = buf[token.start()];
+		__forceinline
+			static TokenType GetType(const char ch) {
+				{
+					switch (ch) {
+					case LoadDataOption::LeftBrace:
+						return  TokenType::LEFT_BRACE;
+						break;
+					case LoadDataOption::RightBrace:
+						return  TokenType::RIGHT_BRACE;
+						break;
+					case LoadDataOption::LeftBracket:
+						return  TokenType::LEFT_BRACKET;
+						break;
+					case LoadDataOption::RightBracket:
+						return  TokenType::RIGHT_BRACE;
+						break;
+					case LoadDataOption::Assignment:
+						return  TokenType::ASSIGNMENT;
+						break;
+					case LoadDataOption::Comma:
+						return  TokenType::COMMA;
+						break;
+					case '\\':
+						return  TokenType::BACK_SLUSH;
+						break;
+					case '\"':
+						return  TokenType::QUOTED;
+						break;
 
-				switch (ch) {
-				case LoadDataOption::LeftBrace:
-					return  TokenType::LEFT_BRACE;
-					break;
-				case LoadDataOption::RightBrace:
-					return  TokenType::RIGHT_BRACE;
-					break;
-				case LoadDataOption::LeftBracket:
-					return  TokenType::LEFT_BRACKET;
-					break;
-				case LoadDataOption::RightBracket:
-					return  TokenType::RIGHT_BRACE;
-					break;
-				case LoadDataOption::Assignment:
-					return  TokenType::ASSIGNMENT;
-					break;
-				case LoadDataOption::Comma:
-					return  TokenType::COMMA;
-					break;
-				case '\\':
-					return  TokenType::BACK_SLUSH;
-					
-					break;
-				case 't':
-					return  TokenType::TRUE;
-
-					break;
-				case 'f':
-					return  TokenType::FALSE;
-					break;
-				case 'n':
-					return  TokenType::_NULL;
-					break;
-				case '\"':
-					return  TokenType::QUOTED;
-					break;
-				case '-':
-				case '0':
-				case '1':
-				case '2':
-				case '3':
-				case '4':
-				case '5':
-				case '6':
-				case '7':
-				case '8':
-				case '9':
-					return  TokenType::NUMBER;
-					break;
+						break;
+					}
 				}
-			}
-			return TokenType::END;
+				return TokenType::STRING;
 		}
 
 		static void PrintToken(std::ostream& out, const char* buffer, Token token) {
@@ -257,7 +238,7 @@ namespace clau {
 
 	class InFileReserver
 	{
-	private: 
+	private:
 		char* buffer = nullptr;
 		int64_t buffer_len = 0;
 		Token* token_orig = nullptr;
@@ -266,7 +247,7 @@ namespace clau {
 	public:
 		~InFileReserver() {
 			if (buffer) {
-				delete[] (buffer);
+				delete[](buffer);
 			}
 			if (token_orig) {
 				free(token_orig);
@@ -276,305 +257,304 @@ namespace clau {
 	private:
 		InFileReserver(const InFileReserver&) = delete;
 		InFileReserver& operator=(const InFileReserver&) = delete;
-	
+
 	private:
 
 		static void _Scanning(char* text, int64_t num, const int64_t length,
 			Token*& token_arr, std::array<int64_t, 2>& _token_arr_size, bool is_last, std::array<int, 2>& _last_state) {
 
-				if (1) {
-					if (length <= 0) {
-						_token_arr_size[0] = 0;
-						return;
+			if (1) {
+				if (length <= 0) {
+					_token_arr_size[0] = 0;
+					return;
+				}
+
+				int64_t token_arr_count = 0;
+				int64_t token_first = 0;
+
+				char* p = text;
+				char* end = text + length;
+
+				// flush helper
+				auto flush = [&](int64_t end_index) {
+					int64_t len = end_index - token_first;
+					if (len > 0) {
+						token_arr[token_arr_count++] =
+							Utility::Get(token_first + num, len, text + token_first);
 					}
+					};
 
-					int64_t token_arr_count = 0;
-					int64_t token_first = 0;
+				while (p < end) {
+					char ch = *p;
+					int64_t i = p - text;
 
-					char* p = text;
-					char* end = text + length;
+					switch (ch) {
 
-					// flush helper
-					auto flush = [&](int64_t end_index) {
-						int64_t len = end_index - token_first;
-						if (len > 0) {
-							token_arr[token_arr_count++] =
-								Utility::Get(token_first + num, len, text + token_first);
-						}
-						};
+					case ' ':
+					case '\t':
+					case '\r':
+					case '\v':
+					case '\f':
+					case '\n':
+						flush(i);
+						token_first = i + 1;
+						break;
 
-					while (p < end) {
-						char ch = *p;
-						int64_t i = p - text;
+					case '"':
+					case ',':
+						flush(i);
+						token_arr[token_arr_count++] =
+							Utility::Get(i + num, 1, p);
+						token_first = i + 1;
+						break;
 
-						switch (ch) {
-
-						case ' ':
-						case '\t':
-						case '\r':
-						case '\v':
-						case '\f':
-						case '\n':
-							flush(i);
-							token_first = i + 1;
-							break;
-
-						case '"':
-						case ',':
-							flush(i);
+					case '\\':
+					{
+						//flush(i);
+						if (p + 1 < end && (p[1] == '\\' || p[1] == '"')) {
 							token_arr[token_arr_count++] =
 								Utility::Get(i + num, 1, p);
-							token_first = i + 1;
-							break;
 
+							++p;
+							++i;
+
+							token_arr[token_arr_count++] =
+								Utility::Get(i + num, 1, p);
+
+							token_first = i + 1;
+						}
+					}
+					break;
+
+					case LoadDataOption::LeftBrace:
+					case LoadDataOption::LeftBracket:
+					case LoadDataOption::RightBrace:
+					case LoadDataOption::RightBracket:
+					case LoadDataOption::Assignment:
+						flush(i);
+						token_arr[token_arr_count++] =
+							Utility::Get(i + num, 1, p);
+						token_first = i + 1;
+						break;
+					}
+
+					++p;
+				}
+
+				flush(length);
+				_token_arr_size[0] = token_arr_count;
+				return;
+			}
+
+			{
+				static bool is_space[256] = { false };
+
+				is_space[' '] = true;
+				is_space['\t'] = true;
+				is_space['\r'] = true;
+				is_space['\v'] = true;
+				is_space['\f'] = true;
+				is_space['\n'] = true;
+
+				if (1) {
+					int state = 0; // if state == 1 then  \] or \[ ...
+
+					int64_t token_first = 0;
+					int64_t token_last = -1;
+
+					int64_t token_arr_count = 0;
+
+					for (int64_t i = 0; i < length; ++i) {
+
+						const char ch = text[i];
+
+						if (is_space[ch]) {
+							token_last = i - 1;
+							if (token_last - token_first + 1 > 0) {
+								token_arr[token_arr_count] = Utility::Get(token_first + num, token_last - token_first + 1, text + token_first);
+								token_arr_count++;
+							}
+							token_first = i + 1;
+							token_last = i + 1;
+						}
+
+						switch (ch) {
+						case '\"':
+							token_last = i - 1;
+							if (token_last - token_first + 1 > 0) {
+								token_arr[token_arr_count] = Utility::Get(token_first + num, token_last - token_first + 1, text + token_first);
+								token_arr_count++;
+							}
+
+							token_first = i;
+							token_last = i;
+
+							token_first = i + 1;
+							token_last = i + 1;
+
+							{//
+								token_arr[token_arr_count] = Utility::Get(i + num, 1, text + i);
+								token_arr_count++;
+							}
+							break;
+						case ',':
+							token_last = i - 1;
+							if (token_last - token_first + 1 > 0) {
+								token_arr[token_arr_count] = Utility::Get(token_first + num, token_last - token_first + 1, text + token_first);
+								token_arr_count++;
+							}
+
+							token_first = i;
+							token_last = i;
+
+							token_first = i + 1;
+							token_last = i + 1;
+
+							{//
+								token_arr[token_arr_count] = Utility::Get(i + num, 1, text + i);
+								token_arr_count++;
+							}
+							break;
 						case '\\':
 						{
-							//flush(i);
-							if (p + 1 < end && (p[1] == '\\' || p[1] == '"')) {
-								token_arr[token_arr_count++] =
-									Utility::Get(i + num, 1, p);
-
-								++p;
+							// divide by { } [ ] , : whitespace and (is_last == false) -> no last item is '\\'
+							if (i + 1 < length && (text[i + 1] == '\\' || text[i + 1] == '\"')) {
+								token_arr[token_arr_count] = Utility::Get(i + num, 1, text + i);
+								token_arr_count++;
 								++i;
-
-								token_arr[token_arr_count++] =
-									Utility::Get(i + num, 1, p);
+								token_arr[token_arr_count] = Utility::Get(i + num, 1, text + i);
+								token_arr_count++;
 
 								token_first = i + 1;
+								token_last = i + 1;
 							}
 						}
 						break;
-
 						case LoadDataOption::LeftBrace:
 						case LoadDataOption::LeftBracket:
 						case LoadDataOption::RightBrace:
 						case LoadDataOption::RightBracket:
 						case LoadDataOption::Assignment:
-							flush(i);
-							token_arr[token_arr_count++] =
-								Utility::Get(i + num, 1, p);
+							token_last = i - 1;
+							if (token_last - token_first + 1 > 0) {
+								token_arr[token_arr_count] = Utility::Get(token_first + num, token_last - token_first + 1, text + token_first);
+								token_arr_count++;
+							}
+							token_first = i;
+							token_last = i;
+
+							token_arr[token_arr_count] = Utility::Get(token_first + num, token_last - token_first + 1, text + token_first);
+							token_arr_count++;
+
 							token_first = i + 1;
+							token_last = i + 1;
 							break;
 						}
 
-						++p;
 					}
 
-					flush(length);
+					if (length - 1 - token_first + 1 > 0) {
+						token_arr[token_arr_count] = Utility::Get(token_first + num, length - 1 - token_first + 1, text + token_first);
+						token_arr_count++;
+					}
+
 					_token_arr_size[0] = token_arr_count;
-					return;
+				}
+			}
+		}
+
+
+		static void _Scanning2(char* text, int64_t num, const int64_t length,
+			Token*& token_arr, int64_t token_arr_size, std::array<int64_t, 2>& _token_arr_size, bool is_last, std::array<int, 2>& _last_state, int id) {
+
+				{
+					auto _text = text - num; // first of total text.
+					int state = 1; Token* start_token = token_arr;
+					int64_t count = 0;
+					Token* token_arr_end = token_arr + token_arr_size;
+
+					for (Token* p = token_arr; p != token_arr_end; ++p) {
+						if (state == 0) {
+							if (Utility::GetType(_text[p->start()]) == TokenType::QUOTED) {
+								state = 1; start_token = p;
+							}
+							else {
+								token_arr[length + count] = *p;
+								count++;
+							}
+						}
+						else { // state == 1
+							if (Utility::GetType(_text[p->start()]) == TokenType::QUOTED) {
+								token_arr[length + count].start() = start_token->start();
+								token_arr[length + count].len() = p->start() - start_token->start() + 1;
+								count++;
+
+								state = 0;
+							}
+							else if (Utility::GetType(_text[p->start()]) == TokenType::BACK_SLUSH) {
+								if (is_last && p + 1 >= token_arr_end) {
+									break;
+								}
+								if (p->start() + 1 == (p + 1)->start()) {
+									++p;
+								}
+							}
+						}
+					}
+
+					if (state == 1) {
+						token_arr[length + count].start() = start_token->start();
+						token_arr[length + count].len() = length - 1 - (start_token->start() - num);
+						count++;
+					}
+
+					_last_state[1] = state;
+					_token_arr_size[1] = count;
 				}
 
 				{
-					static bool is_space[256] = { false };
-
-					is_space[' '] = true;
-					is_space['\t'] = true;
-					is_space['\r'] = true;
-					is_space['\v'] = true;
-					is_space['\f'] = true;
-					is_space['\n'] = true;
-
-					if (1) {
-						int state = 0; // if state == 1 then  \] or \[ ...
-
-						int64_t token_first = 0;
-						int64_t token_last = -1;
-
-						int64_t token_arr_count = 0;
-
-						for (int64_t i = 0; i < length; ++i) {
-
-							const char ch = text[i];
-
-							if (is_space[ch]) {
-								token_last = i - 1;
-								if (token_last - token_first + 1 > 0) {
-									token_arr[token_arr_count] = Utility::Get(token_first + num, token_last - token_first + 1, text + token_first);
-									token_arr_count++;
-								}
-								token_first = i + 1;
-								token_last = i + 1;
+					auto _text = text - num;
+					int state = 0; Token* start_token = token_arr;
+					int64_t count = 0;
+					Token* token_arr_end = token_arr + token_arr_size;
+					for (Token* p = token_arr; p != token_arr_end; ++p) {
+						if (state == 0) {
+							if (Utility::GetType(_text[p->start()]) == TokenType::QUOTED) {
+								state = 1; start_token = p;
 							}
-
-							switch (ch) {
-							case '\"':
-								token_last = i - 1;
-								if (token_last - token_first + 1 > 0) {
-									token_arr[token_arr_count] = Utility::Get(token_first + num, token_last - token_first + 1, text + token_first);
-									token_arr_count++;
-								}
-
-								token_first = i;
-								token_last = i;
-
-								token_first = i + 1;
-								token_last = i + 1;
-
-								{//
-									token_arr[token_arr_count] = Utility::Get(i + num, 1, text + i);
-									token_arr_count++;
-								}
-								break;
-							case ',':
-								token_last = i - 1;
-								if (token_last - token_first + 1 > 0) {
-									token_arr[token_arr_count] = Utility::Get(token_first + num, token_last - token_first + 1, text + token_first);
-									token_arr_count++;
-								}
-
-								token_first = i;
-								token_last = i;
-
-								token_first = i + 1;
-								token_last = i + 1;
-
-								{//
-									token_arr[token_arr_count] = Utility::Get(i + num, 1, text + i);
-									token_arr_count++;
-								}
-								break;
-							case '\\':
-							{
-								// divide by { } [ ] , : whitespace and (is_last == false) -> no last item is '\\'
-								if (i + 1 < length && (text[i + 1] == '\\' || text[i + 1] == '\"')) {
-									token_arr[token_arr_count] = Utility::Get(i + num, 1, text + i);
-									token_arr_count++;
-									++i;
-									token_arr[token_arr_count] = Utility::Get(i + num, 1, text + i);
-									token_arr_count++;
-
-									token_first = i + 1;
-									token_last = i + 1;
-								}
+							else {
+								token_arr[count] = *p;
+								count++;
 							}
-							break;
-							case LoadDataOption::LeftBrace:
-							case LoadDataOption::LeftBracket:
-							case LoadDataOption::RightBrace:
-							case LoadDataOption::RightBracket:
-							case LoadDataOption::Assignment:
-								token_last = i - 1;
-								if (token_last - token_first + 1 > 0) {
-									token_arr[token_arr_count] = Utility::Get(token_first + num, token_last - token_first + 1, text + token_first);
-									token_arr_count++;
+						}
+						else { // state == 1
+							if (Utility::GetType(_text[p->start()]) == TokenType::QUOTED) {
+								token_arr[count].start() = start_token->start();
+								token_arr[count].len() = p->start() - start_token->start() + 1;
+								count++;
+
+								state = 0;
+							}
+							else if (Utility::GetType(_text[p->start()]) == TokenType::BACK_SLUSH) {
+								if (is_last && p + 1 >= token_arr_end) {
+									break;
 								}
-								token_first = i;
-								token_last = i;
-
-								token_arr[token_arr_count] = Utility::Get(token_first + num, token_last - token_first + 1, text + token_first);
-								token_arr_count++;
-
-								token_first = i + 1;
-								token_last = i + 1;
-								break;
-							}
-
-						}
-
-						if (length - 1 - token_first + 1 > 0) {
-							token_arr[token_arr_count] = Utility::Get(token_first + num, length - 1 - token_first + 1, text + token_first);
-							token_arr_count++;
-						}
-
-						_token_arr_size[0] = token_arr_count;
-					}
-				}
-		}
-		
-
-		static void _Scanning2(char* text, int64_t num, const int64_t length,
-			Token*& token_arr, int64_t token_arr_size, std::array<int64_t,2>& _token_arr_size, bool is_last, std::array<int, 2>& _last_state, int id) {
-
-			{
-				auto _text = text - num;
-				int state = 1; int64_t start_idx = 0;
-				int64_t count = 0;
-				for (int64_t j = 0; j < token_arr_size; ++j) {
-					int64_t i = j;
-
-					if (state == 0) {
-						if (Utility::GetType(token_arr[i], _text) == TokenType::QUOTED) {
-							state = 1; start_idx = i;
-						}
-						else {
-							token_arr[length + count] = token_arr[i];
-							count++;
-						}
-					}
-					else { // state == 1
-						if (Utility::GetType(token_arr[i], _text) == TokenType::QUOTED) {
-							token_arr[length + count].start() = token_arr[start_idx].start();
-							token_arr[length + count].len() = token_arr[i].start() - token_arr[start_idx].start() + 1;
-							count++;
-
-							state = 0;
-						}
-						else if (Utility::GetType(token_arr[i], _text) == TokenType::BACK_SLUSH) {
-							if (is_last && i + 1 >= token_arr_size) {
-								break;
-							}
-							if (token_arr[i].start() + 1 == token_arr[i + 1].start()) {
-								++j;
+								if (p->start() + 1 == (p + 1)->start()) {
+									++p;
+								}
 							}
 						}
 					}
-				}
 
-				if (state == 1) {
-					token_arr[length + count].start() = token_arr[start_idx].start();
-					token_arr[length + count].len() = length - 1 - (token_arr[start_idx].start() - num); 
-					count++;
-				}
-
-				_last_state[1] = state;
-				_token_arr_size[1] = count;
-			}
-
-			{
-				auto _text = text - num;
-				int state = 0; int64_t start_idx = 0;
-				int64_t count = 0;
-				for (int64_t j = 0; j < token_arr_size; ++j) {
-					int64_t i = j;
-
-					if (state == 0) {
-						if (Utility::GetType(token_arr[i], _text) == TokenType::QUOTED) {
-							state = 1; start_idx = i;
-						}
-						else {
-							token_arr[count] = token_arr[i];
-							count++;
-						}
+					if (state == 1) {
+						token_arr[count].start() = start_token->start();
+						token_arr[count].len() = length - 1 - (start_token->start() - num);
+						count++;
 					}
-					else { // state == 1
-						if (Utility::GetType(token_arr[i], _text) == TokenType::QUOTED) {
-							token_arr[count].start() = token_arr[start_idx].start();
-							token_arr[count].len() = token_arr[i].start() - token_arr[start_idx].start() + 1;
-							count++;
 
-							state = 0;
-						}
-						else if (Utility::GetType(token_arr[i], _text) == TokenType::BACK_SLUSH) {
-							if (is_last && i + 1 >= token_arr_size) {
-								break;
-							}
-							if (token_arr[i].start() + 1 == token_arr[i + 1].start()) {
-								++j;
-							}
-						}
-					}
+					_last_state[0] = state;
+					_token_arr_size[0] = count;
 				}
-
-				if (state == 1) {
-					token_arr[count].start() = token_arr[start_idx].start();
-					token_arr[count].len() = length - 1  - (token_arr[start_idx].start() - num);
-					count++;
-				}
-
-				_last_state[0] = state;
-				_token_arr_size[0] = count;
-			}
 		}
 
 
@@ -585,7 +565,7 @@ namespace clau {
 			std::vector<int64_t> start(thr_num);
 			std::vector<int64_t> last(thr_num);
 
-			
+
 			{
 				start[0] = 0;
 
@@ -602,7 +582,7 @@ namespace clau {
 							start[i] = x;
 							break;
 						}
-						
+
 						if (x == length) { // meet end of text?
 							return false; // 
 						}
@@ -625,7 +605,7 @@ namespace clau {
 				last[thr_num - 1] = length;
 			}
 			int64_t real_token_arr_count = 0;
-				
+
 			auto a = std::chrono::steady_clock::now();
 			Token* tokens_orig = nullptr;
 			int64_t now_capacity = 2 * (length + 1);
@@ -655,16 +635,16 @@ namespace clau {
 			for (int64_t i = 1; i < thr_num; ++i) {
 				tokens[i] = tokens[i - 1] + 2 * (last[i - 1] - start[i - 1]);
 			}
-			
+
 			int64_t token_count = 0;
 
 			std::vector<std::array<int64_t, 2>> token_arr_size(thr_num);
 			std::vector<std::array<int, 2>> last_state(thr_num);
-			
-			
+
+
 			for (int i = 0; i < thr_num; ++i) {
-				thr[i] = std::thread(_Scanning, text + start[i], start[i], last[i] - start[i], std::ref(tokens[i]), std::ref(token_arr_size[i]), 
-					i == thr_num - 1, std::ref(last_state[i])); 
+				thr[i] = std::thread(_Scanning, text + start[i], start[i], last[i] - start[i], std::ref(tokens[i]), std::ref(token_arr_size[i]),
+					i == thr_num - 1, std::ref(last_state[i]));
 			}
 
 			for (int i = 0; i < thr_num; ++i) {
@@ -720,7 +700,7 @@ namespace clau {
 			int idx = -1;
 
 			int start_idx = -1;
-			
+
 			auto d = std::chrono::steady_clock::now();
 			auto dur = std::chrono::duration_cast<std::chrono::milliseconds>(b - a);
 			auto dur2 = std::chrono::duration_cast<std::chrono::milliseconds>(c - b);
@@ -736,7 +716,7 @@ namespace clau {
 				//std::ofstream outfile("output.txt");
 
 				//if (outfile) {
-					for (int t = 0; t < thr_num; ++t) {
+				for (int t = 0; t < thr_num; ++t) {
 					//	if (1) {
 					//		for (int i = 0; i < token_arr_size[t][0]; ++i) {
 					//			Utility::PrintToken(outfile, text, tokens[t][i]);
@@ -744,10 +724,10 @@ namespace clau {
 								//	getchar();
 					//		}
 					//	}
-						real_token_arr_count += token_arr_size[t][0];
-					}
-					//outfile.close();
-				//}
+					real_token_arr_count += token_arr_size[t][0];
+				}
+				//outfile.close();
+			//}
 
 				_token_arr = tokens;
 				_token_arr_size = real_token_arr_count;
@@ -775,7 +755,7 @@ namespace clau {
 					const char ch = text[i];
 
 					if (0 == state) {
-						 if ('\"' == ch) {
+						if ('\"' == ch) {
 							token_last = i - 1;
 							if (token_last - token_first + 1 > 0) {
 								token_arr[token_arr_count] = Utility::Get(token_first, token_last - token_first + 1, text);
@@ -882,7 +862,7 @@ namespace clau {
 				_token_arr_size = token_arr_size;
 			}
 		}
-		
+
 		static void Scanning2(char* text, const int64_t length,
 			Token*& _token_arr, int64_t& _token_arr_size) {
 
@@ -915,7 +895,7 @@ namespace clau {
 								const char ch = text[i];
 								if ('\\' == ch) {
 									// i >= length -> error.
-									++i; 
+									++i;
 								}
 								else if ('\"' == ch) {
 									token_last = i;
@@ -1008,7 +988,7 @@ namespace clau {
 		}
 
 		static std::pair<bool, int> Scan(FILE* inFile, int thr_num,
-			char*& _buffer, int64_t& _buffer_len, Token*& _token_orig, int64_t& _token_orig_len, 
+			char*& _buffer, int64_t& _buffer_len, Token*& _token_orig, int64_t& _token_orig_len,
 			std::vector<Token*>& _token_arr, int64_t& _token_arr_len, bool use_simd)
 		{
 			if (inFile == nullptr) {
@@ -1035,7 +1015,7 @@ namespace clau {
 				}
 
 				file_length = length;
-				
+
 				if (_buffer) {
 					if (_buffer_len < length) {
 						delete[] _buffer; _buffer = nullptr;
@@ -1103,7 +1083,7 @@ namespace clau {
 
 			// in Scan, close inFile;
 			bool x = Scan(inFile, thr_num, buffer, buffer_len, token_orig, token_orig_len, token_arr, token_arr_len, false).second > 0;
-			
+
 			return x;
 		}
 	};
