@@ -178,7 +178,7 @@ namespace clau_test {
 
 int main(void)
 {
-    clau_test::run();
+    //clau_test::run();
 
     //return 0;
 

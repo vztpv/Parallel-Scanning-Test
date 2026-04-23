@@ -1,7 +1,4 @@
 ﻿
-
-
-
 #ifndef PARSER_H
 #define PARSER_H
 
@@ -19,6 +16,8 @@
 #include <utility>
 #include <thread>
 
+
+#include <immintrin.h>  // SSE4.2 / AVX2
 
 namespace clau {
 
@@ -173,7 +172,7 @@ namespace clau {
 				token_first++;
 			}
 			while (isWhitespace(buf[token_last]) && token_first <= token_last) {
-				token_last++;
+				token_last--;
 			}
 		}
 
@@ -203,7 +202,7 @@ namespace clau {
 						return  TokenType::LEFT_BRACKET;
 						break;
 					case LoadDataOption::RightBracket:
-						return  TokenType::RIGHT_BRACE;
+						return  TokenType::RIGHT_BRACKET;
 						break;
 					case LoadDataOption::Assignment:
 						return  TokenType::ASSIGNMENT;
@@ -260,6 +259,110 @@ namespace clau {
 
 	private:
 
+		// _Scanning의 핵심 루프를 교체
+		static void _Scanning_SIMD(char* text, int64_t num, const int64_t length,
+			Token*& token_arr, std::array<int64_t, 2>& _token_arr_size,
+			bool is_last, std::array<int, 2>& _last_state)
+		{
+			if (length <= 0) { _token_arr_size[0] = 0; return; }
+
+			int64_t token_arr_count = 0;
+			int64_t token_first = 0;
+			int64_t i = 0;
+
+			// 구분자 집합 (16바이트 패턴으로 로드)
+			// PCMPISTRI _SIDD_CMP_EQUAL_ANY 모드에 쓸 needle
+			const __m128i delimiters = _mm_setr_epi8(
+				' ', '\t', '\r', '\n', '\v', '\f',
+				'{', '}', '[', ']', ':', ',', '"', '\\',
+				0, 0  // padding
+			);
+			constexpr int mode = _SIDD_UBYTE_OPS | _SIDD_CMP_EQUAL_ANY | _SIDD_LEAST_SIGNIFICANT;
+
+			auto flush = [&](int64_t end_index) {
+				int64_t len = end_index - token_first;
+				if (len > 0) {
+					token_arr[token_arr_count++] =
+						Utility::Get(token_first + num, len, text + token_first);
+				}
+				};
+
+			// --- SIMD 메인 루프 ---
+			while (i + 16 <= length) {
+				__m128i chunk = _mm_loadu_si128(reinterpret_cast<const __m128i*>(text + i));
+
+				// chunk 안에 구분자가 하나라도 있는지 빠르게 확인
+				if (_mm_cmpistrc(chunk, delimiters, mode)) {
+					// 있으면 16바이트 안을 스칼라로 처리
+					int64_t end = i + 16;
+					while (i < end) {
+						char ch = text[i];
+						switch (ch) {
+						case ' ': case '\t': case '\r': case '\n': case '\v': case '\f':
+							flush(i);
+							token_first = i + 1;
+							break;
+						case '"': case ',':
+							flush(i);
+							token_arr[token_arr_count++] = Utility::Get(i + num, 1, text + i);
+							token_first = i + 1;
+							break;
+						case '\\':
+							if (i + 1 < length && (text[i + 1] == '\\' || text[i + 1] == '"')) {
+								token_arr[token_arr_count++] = Utility::Get(i + num, 1, text + i);
+								++i;
+								token_arr[token_arr_count++] = Utility::Get(i + num, 1, text + i);
+								token_first = i + 1;
+							}
+							break;
+						case '{': case '[': case '}': case ']': case ':':
+							flush(i);
+							token_arr[token_arr_count++] = Utility::Get(i + num, 1, text + i);
+							token_first = i + 1;
+							break;
+						}
+						++i;
+					}
+				}
+				else {
+					// 구분자 없음 → 16바이트 전부 토큰 내부, 건너뜀
+					i += 16;
+				}
+			}
+
+			// --- 나머지 스칼라 처리 ---
+			while (i < length) {
+				char ch = text[i];
+				switch (ch) {
+				case ' ': case '\t': case '\r': case '\n': case '\v': case '\f':
+					flush(i);
+					token_first = i + 1;
+					break;
+				case '"': case ',':
+					flush(i);
+					token_arr[token_arr_count++] = Utility::Get(i + num, 1, text + i);
+					token_first = i + 1;
+					break;
+				case '\\':
+					if (i + 1 < length && (text[i + 1] == '\\' || text[i + 1] == '"')) {
+						token_arr[token_arr_count++] = Utility::Get(i + num, 1, text + i);
+						++i;
+						token_arr[token_arr_count++] = Utility::Get(i + num, 1, text + i);
+						token_first = i + 1;
+					}
+					break;
+				case '{': case '[': case '}': case ']': case ':':
+					flush(i);
+					token_arr[token_arr_count++] = Utility::Get(i + num, 1, text + i);
+					token_first = i + 1;
+					break;
+				}
+				++i;
+			}
+
+			flush(length);
+			_token_arr_size[0] = token_arr_count;
+		}
 		static void _Scanning(char* text, int64_t num, const int64_t length,
 			Token*& token_arr, std::array<int64_t, 2>& _token_arr_size, bool is_last, std::array<int, 2>& _last_state) {
 
