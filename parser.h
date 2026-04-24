@@ -303,6 +303,7 @@ namespace clau {
 			int64_t token_first = 0;
 			int64_t token_count = 0;
 			int64_t quoted_count = 0;
+			int32_t backslash_on = -1;
 
 			auto flush_word = [&](int64_t end_idx) {
 				if (end_idx > token_first) {
@@ -321,6 +322,16 @@ namespace clau {
 				while (mask != 0) {
 					// 가장 낮은 자리에 있는 '1'의 인덱스 추출 (0 ~ 31)
 					uint32_t bit_idx = _tzcnt_u32(mask);
+
+					// 이전 backslash check.
+					if (backslash_on >= 0) {
+						if (bit_idx == (backslash_on + 1) % 32) {
+							backslash_on = -1;
+							mask = _blsr_u32(mask);
+							continue;
+						}
+						backslash_on = -1;
+					}
 
 					// 현재 비트를 0으로 지움 (다음 반복을 위해)
 					mask = _blsr_u32(mask);
@@ -343,6 +354,7 @@ namespace clau {
 						//}
 
 						token_first = actual_idx + 2;
+						backslash_on = bit_idx;
 
 						// 만약 이스케이프 문자가 청크 내에 있다면, 마스크에서 다음 비트를 지워야 할 수도 있음
 						// (단순화를 위해 이 부분은 스칼라 예외 처리나 마스크 조작이 필요합니다)
@@ -398,21 +410,20 @@ namespace clau {
 					case '\\':
 					{
 						flush_word(i);
-						if (i + 1 < length && (text[i + 1] == '\\' || text[i + 1] == '"')) {
-							//token_arr[token_arr_count++] =
-							//	Utility::Get(i + num, 1, p);
+						
+						token_arr[token_count++] =
+								Utility::Get(i + num, 1, nullptr);
 
+						if (i + 1 < length) {
+							token_first = i + 2;
 							++i;
-
 							//token_arr[token_arr_count++] =
 							//	Utility::Get(i + num, 1, p);
-
-							token_first = i;
 						}
 						else {
 							//token_arr[token_arr_count++] = Utility::Get(i + num, 1, p);
 
-							token_first = i;
+							token_first = i + 1;
 						}
 					}
 					break;
@@ -600,7 +611,7 @@ namespace clau {
 					case '\\':
 					{
 						flush(i);
-						if (p + 1 < end && (p[1] == '\\' || p[1] == '"')) {
+						if (p + 1 < end) { // && (p[1] == '\\' || p[1] == '"')) {
 							//token_arr[token_arr_count++] =
 							//	Utility::Get(i + num, 1, p);
 
