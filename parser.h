@@ -582,6 +582,7 @@ namespace clau {
 			const int64_t quote_count) {
 
 				if (quote_count % 2 == 1) { // start state == 1
+					std::cout << " odd \n";
 					auto _text = text - num; // first of total text.
 					int state = 1; Token* start_token = token_arr;
 					int64_t count = 0;
@@ -627,6 +628,7 @@ namespace clau {
 				}
 
 				if (quote_count % 2 == 0) {
+					std::cout << " even \n";
 					auto _text = text - num;
 					int state = 0; Token* start_token = token_arr;
 					int64_t count = 0;
@@ -770,12 +772,13 @@ namespace clau {
 			{
 				int i = 0;
 				thr[i] = std::thread(_Scanning2, text + start[i], start[i], last[i] - start[i], std::ref(tokens[i]), std::ref(token_arr_size[i][0]), std::ref(token_arr_size[i]),
-					i == thr_num - 1, std::ref(last_state[i]), i, quote_count[i]);
+					i == thr_num - 1, std::ref(last_state[i]), i, 0);
 			}
 
 			for (int i = 1; i < thr_num; ++i) {
+				quote_count[i] += quote_count[i - 1];
 				thr[i] = std::thread(_Scanning2, text + start[i], start[i], last[i] - start[i], std::ref(tokens[i]), std::ref(token_arr_size[i][0]), std::ref(token_arr_size[i]),
-					i == thr_num - 1, std::ref(last_state[i]), i, quote_count[i]);
+					i == thr_num - 1, std::ref(last_state[i]), i, quote_count[i - 1]);
 			}
 
 			for (int i = 0; i < thr_num; ++i) {
@@ -799,14 +802,15 @@ namespace clau {
 								- _start;
 							tokens[i][0].start() = _start;
 						}
-
-						token_arr_size[i][0] = token_arr_size[i][1];
+											
 						std::memcpy(tokens[i] + 1, tokens[i] + last[i] - start[i] + 1,
 							sizeof(Token) * (token_arr_size[i][1] - 1));
 					}
 					else {
 						std::cout << "chk ...........1\n";
 					}
+					
+					token_arr_size[i][0] = token_arr_size[i][1];
 				}
 				state = last_state[i][state];
 			}
@@ -826,7 +830,7 @@ namespace clau {
 
 			std::cout << "state is " << state << "\n";
 
-			if (false) {
+			if (0) {
 				std::ofstream outfile("output.json", std::ios::binary);
 
 				if (outfile) {

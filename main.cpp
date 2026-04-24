@@ -185,7 +185,7 @@ int main(int argc, char* argv[])
 
 	clau::LoadData test;
 
-	for (int i = 0; i < 5; ++i) {
+	for (int i = 0; i < 16; ++i) {
 		int a = clock();
 		test.LoadDataFromFile(argv[1], 0, 0, false); // 1, 0
 		int b = clock();
