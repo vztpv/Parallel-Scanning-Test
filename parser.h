@@ -18,8 +18,47 @@
 
 
 #include <immintrin.h>  // SSE4.2 / AVX2
+#include <iostream>
 
 namespace clau {
+
+
+	// 구분자 위치를 비트마스크로 뽑아내는 함수 (simdjson stage 1 변형)
+	inline uint32_t get_delimiter_mask_avx2(const __m256i chunk) {
+		// 1. 따옴표(")와 백슬래시(\) 마스크
+		__m256i quote = _mm256_cmpeq_epi8(chunk, _mm256_set1_epi8('"'));
+		__m256i slash = _mm256_cmpeq_epi8(chunk, _mm256_set1_epi8('\\'));
+
+		// 2. 구조적 기호 ({, }, [, ], :, ,) 마스크
+		// 기호들의 아스키 코드 규칙성을 이용한 비교 (단순화를 위해 cmpeq 여러 개 사용 가능)
+		__m256i lbrace = _mm256_cmpeq_epi8(chunk, _mm256_set1_epi8('{'));
+		__m256i rbrace = _mm256_cmpeq_epi8(chunk, _mm256_set1_epi8('}'));
+		__m256i lbrack = _mm256_cmpeq_epi8(chunk, _mm256_set1_epi8('['));
+		__m256i rbrack = _mm256_cmpeq_epi8(chunk, _mm256_set1_epi8(']'));
+		__m256i colon = _mm256_cmpeq_epi8(chunk, _mm256_set1_epi8(':'));
+		__m256i comma = _mm256_cmpeq_epi8(chunk, _mm256_set1_epi8(','));
+
+		__m256i struct_chars = _mm256_or_si256(
+			_mm256_or_si256(_mm256_or_si256(lbrace, rbrace), _mm256_or_si256(lbrack, rbrack)),
+			_mm256_or_si256(colon, comma)
+		);
+
+		// 3. 공백 (Space, \t, \n, \r) 마스크 (simdjson의 유명한 최적화 방식)
+		__m256i whitespace = _mm256_cmpeq_epi8(chunk, _mm256_set1_epi8(' '));
+		whitespace = _mm256_or_si256(whitespace, _mm256_cmpeq_epi8(chunk, _mm256_set1_epi8('\n')));
+		whitespace = _mm256_or_si256(whitespace, _mm256_cmpeq_epi8(chunk, _mm256_set1_epi8('\r')));
+		whitespace = _mm256_or_si256(whitespace, _mm256_cmpeq_epi8(chunk, _mm256_set1_epi8('\t')));
+
+		// 4. 모든 구분자를 하나로 합침
+		__m256i all_delimiters = _mm256_or_si256(
+			_mm256_or_si256(quote, slash),
+			_mm256_or_si256(struct_chars, whitespace)
+		);
+
+		// 5. 256비트(32바이트) 결과를 32비트 정수형 마스크로 변환
+		return _mm256_movemask_epi8(all_delimiters);
+	}
+
 
 	struct Token {
 	private:
@@ -259,6 +298,144 @@ namespace clau {
 
 	private:
 
+		static void ScanWithSimdJsonStyle(const char* text, int64_t num, int64_t length, Token* token_arr, int64_t& token_arr_size, int64_t* _quoted_count) {
+			int64_t i = 0;
+			int64_t token_first = 0;
+			int64_t token_count = 0;
+			int64_t quoted_count = 0;
+
+			auto flush_word = [&](int64_t end_idx) {
+				if (end_idx > token_first) {
+					token_arr[token_count++] = Utility::Get(token_first + num, end_idx - token_first, text);
+				}
+				};
+
+			// 32바이트 단위로 처리
+			while (i + 32 <= length) {
+				__m256i chunk = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(text + i));
+
+				// 위에서 정의한 함수로 32비트 마스크 획득
+				uint32_t mask = get_delimiter_mask_avx2(chunk);
+
+				// 마스크의 비트가 0이 될 때까지 (구분자가 있는 위치로 점프)
+				while (mask != 0) {
+					// 가장 낮은 자리에 있는 '1'의 인덱스 추출 (0 ~ 31)
+					uint32_t bit_idx = _tzcnt_u32(mask);
+
+					// 현재 비트를 0으로 지움 (다음 반복을 위해)
+					mask = _blsr_u32(mask);
+
+					int64_t actual_idx = i + bit_idx;
+					char ch = text[actual_idx];
+
+					// 1. 구분자 이전까지의 글자들은 '단어(T_WORD)'로 토큰화
+					flush_word(actual_idx);
+
+					// 2. 구분자 자체 처리
+					if (ch == ' ' || ch == '\n' || ch == '\r' || ch == '\t') {
+						token_first = actual_idx + 1; // 공백은 버림 (또는 토큰화)
+					}
+					else if (ch == '\\') {
+						// 이스케이프 문자 처리 (백슬래시 + 다음 글자 1개)
+						token_arr[token_count++] = Utility::Get(actual_idx, 1, text);
+						//if (actual_idx + 1 < length) {
+							//token_arr[token_count++] = Utility::Get(actual_idx + 1, 1, text);
+						//}
+
+						token_first = actual_idx + 2;
+
+						// 만약 이스케이프 문자가 청크 내에 있다면, 마스크에서 다음 비트를 지워야 할 수도 있음
+						// (단순화를 위해 이 부분은 스칼라 예외 처리나 마스크 조작이 필요합니다)
+					}
+					else {
+						quoted_count += !(ch - '"');
+
+						// 따옴표나 기호({, }, [, ], :, ,)는 그 자체를 단일 토큰으로 추가
+						token_arr[token_count++] = Utility::Get(actual_idx + num, 1, text);
+						token_first = actual_idx + 1;
+					}
+				}
+
+				// 32바이트 청크 안에 구분자가 아예 없는 경우 (mask == 0), 
+				// flush하지 않고 그대로 통과하므로 token_first가 유지되어 긴 단어로 묶입니다.
+				i += 32;
+			}
+
+			// (스칼라 루프) 32바이트로 나누어 떨어지지 않는 나머지 꼬리 부분 처리
+			while (i < length) {
+
+				// 기존 작성하신 스칼라 스캐닝 코드 적용...
+				{
+					char ch = text[i];
+
+					switch (ch) {
+
+					case ' ':
+					case '\t':
+					case '\r':
+					case '\v':
+					case '\f':
+					case '\n':
+						flush_word(i);
+						token_first = i + 1;
+						break;
+
+					case '"':
+						++quoted_count;
+
+						flush_word(i);
+						token_arr[token_count++] =
+							Utility::Get(i + num, 1, nullptr);
+						token_first = i + 1;
+						break;
+					case ',':
+						flush_word(i);
+						token_arr[token_count++] =
+							Utility::Get(i + num, 1, nullptr);
+						token_first = i + 1;
+						break;
+
+					case '\\':
+					{
+						flush_word(i);
+						if (i + 1 < length && (text[i + 1] == '\\' || text[i + 1] == '"')) {
+							//token_arr[token_arr_count++] =
+							//	Utility::Get(i + num, 1, p);
+
+							++i;
+
+							//token_arr[token_arr_count++] =
+							//	Utility::Get(i + num, 1, p);
+
+							token_first = i;
+						}
+						else {
+							//token_arr[token_arr_count++] = Utility::Get(i + num, 1, p);
+
+							token_first = i;
+						}
+					}
+					break;
+
+					case LoadDataOption::LeftBrace:
+					case LoadDataOption::LeftBracket:
+					case LoadDataOption::RightBrace:
+					case LoadDataOption::RightBracket:
+					case LoadDataOption::Assignment:
+						flush_word(i);
+						token_arr[token_count++] =
+							Utility::Get(i + num, 1, nullptr);
+						token_first = i + 1;
+						break;
+					}
+				}
+				++i;
+			}
+			flush_word(length);
+			token_arr_size = token_count;
+			_quoted_count[0] = quoted_count;
+		}
+
 		// _Scanning의 핵심 루프를 교체
 		static void _Scanning_SIMD(char* text, int64_t num, const int64_t length,
 			Token*& token_arr, std::array<int64_t, 2>& _token_arr_size,
@@ -422,18 +599,22 @@ namespace clau {
 
 					case '\\':
 					{
-						//flush(i);
+						flush(i);
 						if (p + 1 < end && (p[1] == '\\' || p[1] == '"')) {
-							token_arr[token_arr_count++] =
-								Utility::Get(i + num, 1, p);
+							//token_arr[token_arr_count++] =
+							//	Utility::Get(i + num, 1, p);
 
 							++p;
-							++i;
 
-							token_arr[token_arr_count++] =
-								Utility::Get(i + num, 1, p);
+							//token_arr[token_arr_count++] =
+							//	Utility::Get(i + num, 1, p);
 
-							token_first = i + 1;
+							token_first = i;
+						}
+						else {
+							//token_arr[token_arr_count++] = Utility::Get(i + num, 1, p);
+							
+							token_first = i;
 						}
 					}
 					break;
@@ -582,7 +763,7 @@ namespace clau {
 			const int64_t quote_count) {
 
 				if (quote_count % 2 == 1) { // start state == 1
-					std::cout << " odd \n";
+					//std::cout << " odd \n";
 					auto _text = text - num; // first of total text.
 					int state = 1; Token* start_token = token_arr;
 					int64_t count = 0;
@@ -606,13 +787,9 @@ namespace clau {
 
 								state = 0;
 							}
-							else if (Utility::GetType(_text[p->start()]) == TokenType::BACK_SLUSH) {
-								if (is_last && p + 1 >= token_arr_end) {
-									break;
-								}
-								if (p->start() + 1 == (p + 1)->start()) {
-									++p;
-								}
+							else if (Utility::GetType(_text[p->start()]) == BACK_SLUSH) {
+								if (is_last && p + 1 >= token_arr_end) break;
+								if (p->start() + 1 == (p + 1)->start()) ++p;
 							}
 						}
 					}
@@ -628,7 +805,7 @@ namespace clau {
 				}
 
 				if (quote_count % 2 == 0) {
-					std::cout << " even \n";
+					//std::cout << " even \n";
 					auto _text = text - num;
 					int state = 0; Token* start_token = token_arr;
 					int64_t count = 0;
@@ -651,13 +828,9 @@ namespace clau {
 
 								state = 0;
 							}
-							else if (Utility::GetType(_text[p->start()]) == TokenType::BACK_SLUSH) {
-								if (is_last && p + 1 >= token_arr_end) {
-									break;
-								}
-								if (p->start() + 1 == (p + 1)->start()) {
-									++p;
-								}
+							else if (Utility::GetType(_text[p->start()]) == BACK_SLUSH) {
+								if (is_last && p + 1 >= token_arr_end) break;
+								if (p->start() + 1 == (p + 1)->start()) ++p;
 							}
 						}
 					}
@@ -759,8 +932,9 @@ namespace clau {
 			std::vector<int64_t> quote_count(thr_num, 0);
 
 			for (int i = 0; i < thr_num; ++i) {
-				thr[i] = std::thread(_Scanning, text + start[i], start[i], last[i] - start[i], std::ref(tokens[i]), std::ref(token_arr_size[i]),
-					i == thr_num - 1, std::ref(last_state[i]), &quote_count[i]);
+				thr[i] = std::thread(ScanWithSimdJsonStyle, text + start[i], start[i], last[i] - start[i], tokens[i], std::ref(token_arr_size[i][0]), &quote_count[i]);
+				//thr[i] = std::thread(_Scanning, text + start[i], start[i], last[i] - start[i], std::ref(tokens[i]), std::ref(token_arr_size[i]),
+					//i == thr_num - 1, std::ref(last_state[i]), &quote_count[i]);
 			}
 
 			for (int i = 0; i < thr_num; ++i) {
@@ -787,7 +961,7 @@ namespace clau {
 
 			auto c = std::chrono::steady_clock::now();
 
-			int state = last_state[0][0];
+			int state = quote_count[0] % 2;
 
 			for (int i = 1; i < thr_num; ++i) {
 				if (state == 1) {
@@ -812,7 +986,7 @@ namespace clau {
 					
 					token_arr_size[i][0] = token_arr_size[i][1];
 				}
-				state = last_state[i][state];
+				state = quote_count[i] % 2; // last_state[i][state];
 			}
 
 			int idx = -1;
@@ -830,7 +1004,7 @@ namespace clau {
 
 			std::cout << "state is " << state << "\n";
 
-			if (0) {
+			if (false) {
 				std::ofstream outfile("output.json", std::ios::binary);
 
 				if (outfile) {

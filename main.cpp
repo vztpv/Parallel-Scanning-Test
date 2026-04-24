@@ -187,7 +187,7 @@ int main(int argc, char* argv[])
 
 	for (int i = 0; i < 16; ++i) {
 		int a = clock();
-		test.LoadDataFromFile(argv[1], 0, 0, false); // 1, 0
+		test.LoadDataFromFile(argv[1], 0, 0, true); // 1, 0
 		int b = clock();
 
 		std::cout << "test end " << b - a << "ms\n";
