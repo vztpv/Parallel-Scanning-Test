@@ -226,7 +226,7 @@ namespace clau {
 		static void PrintToken(std::ostream& out, const char* buffer, Token token) {
 			if (out) {
 				//std::cout << std::string_view(buffer + token.start(), token.len());
-				out << std::string_view(buffer + token.start(), token.len()) << "\n";
+				out << std::string_view(buffer + token.start(), token.len());
 				//std::cout << Utility::GetIdx(token) << " " << Utility::GetLength(token) << "\n";
 				//std::cout << std::string_view(buffer + Utility::GetIdx(token), Utility::GetLength(token));
 			}
@@ -364,7 +364,8 @@ namespace clau {
 			_token_arr_size[0] = token_arr_count;
 		}
 		static void _Scanning(char* text, int64_t num, const int64_t length,
-			Token*& token_arr, std::array<int64_t, 2>& _token_arr_size, bool is_last, std::array<int, 2>& _last_state) {
+			Token*& token_arr, std::array<int64_t, 2>& _token_arr_size, bool is_last, std::array<int, 2>& _last_state, 
+			int64_t* out_quote_count) {
 
 			if (1) {
 				if (length <= 0) {
@@ -374,6 +375,7 @@ namespace clau {
 
 				int64_t token_arr_count = 0;
 				int64_t token_first = 0;
+				int64_t quote_count = 0;
 
 				char* p = text;
 				char* end = text + length;
@@ -404,6 +406,13 @@ namespace clau {
 						break;
 
 					case '"':
+						++quote_count;
+
+						flush(i);
+						token_arr[token_arr_count++] =
+							Utility::Get(i + num, 1, p);
+						token_first = i + 1;
+						break;
 					case ',':
 						flush(i);
 						token_arr[token_arr_count++] =
@@ -446,6 +455,7 @@ namespace clau {
 
 				flush(length);
 				_token_arr_size[0] = token_arr_count;
+				out_quote_count[0] = quote_count;
 				return;
 			}
 
@@ -568,9 +578,10 @@ namespace clau {
 
 
 		static void _Scanning2(char* text, int64_t num, const int64_t length,
-			Token*& token_arr, int64_t token_arr_size, std::array<int64_t, 2>& _token_arr_size, bool is_last, std::array<int, 2>& _last_state, int id) {
+			Token*& token_arr, int64_t token_arr_size, std::array<int64_t, 2>& _token_arr_size, bool is_last, std::array<int, 2>& _last_state, int id,
+			const int64_t quote_count) {
 
-				{
+				if (quote_count % 2 == 1) { // start state == 1
 					auto _text = text - num; // first of total text.
 					int state = 1; Token* start_token = token_arr;
 					int64_t count = 0;
@@ -615,7 +626,7 @@ namespace clau {
 					_token_arr_size[1] = count;
 				}
 
-				{
+				if (quote_count % 2 == 0) {
 					auto _text = text - num;
 					int state = 0; Token* start_token = token_arr;
 					int64_t count = 0;
@@ -743,11 +754,11 @@ namespace clau {
 
 			std::vector<std::array<int64_t, 2>> token_arr_size(thr_num);
 			std::vector<std::array<int, 2>> last_state(thr_num);
-
+			std::vector<int64_t> quote_count(thr_num, 0);
 
 			for (int i = 0; i < thr_num; ++i) {
 				thr[i] = std::thread(_Scanning, text + start[i], start[i], last[i] - start[i], std::ref(tokens[i]), std::ref(token_arr_size[i]),
-					i == thr_num - 1, std::ref(last_state[i]));
+					i == thr_num - 1, std::ref(last_state[i]), &quote_count[i]);
 			}
 
 			for (int i = 0; i < thr_num; ++i) {
@@ -759,12 +770,12 @@ namespace clau {
 			{
 				int i = 0;
 				thr[i] = std::thread(_Scanning2, text + start[i], start[i], last[i] - start[i], std::ref(tokens[i]), std::ref(token_arr_size[i][0]), std::ref(token_arr_size[i]),
-					i == thr_num - 1, std::ref(last_state[i]), i);
+					i == thr_num - 1, std::ref(last_state[i]), i, quote_count[i]);
 			}
 
 			for (int i = 1; i < thr_num; ++i) {
 				thr[i] = std::thread(_Scanning2, text + start[i], start[i], last[i] - start[i], std::ref(tokens[i]), std::ref(token_arr_size[i][0]), std::ref(token_arr_size[i]),
-					i == thr_num - 1, std::ref(last_state[i]), i);
+					i == thr_num - 1, std::ref(last_state[i]), i, quote_count[i]);
 			}
 
 			for (int i = 0; i < thr_num; ++i) {
@@ -815,23 +826,27 @@ namespace clau {
 
 			std::cout << "state is " << state << "\n";
 
-			{
-				//std::ofstream outfile("output.txt");
+			if (false) {
+				std::ofstream outfile("output.json", std::ios::binary);
 
-				//if (outfile) {
-				for (int t = 0; t < thr_num; ++t) {
-					//	if (1) {
-					//		for (int i = 0; i < token_arr_size[t][0]; ++i) {
-					//			Utility::PrintToken(outfile, text, tokens[t][i]);
+				if (outfile) {
+					for (int t = 0; t < thr_num; ++t) {
+						if (1) {
+							for (int i = 0; i < token_arr_size[t][0]; ++i) {
+								Utility::PrintToken(outfile, text, tokens[t][i]);
+								outfile << "\n";
+
 								//	std::cout << "|\n";
 								//	getchar();
-					//		}
-					//	}
-					real_token_arr_count += token_arr_size[t][0];
+							}
+						}
+						real_token_arr_count += token_arr_size[t][0];
+					}
+					outfile.close();
 				}
-				//outfile.close();
-			//}
+			}
 
+			{
 				_token_arr = tokens;
 				_token_arr_size = real_token_arr_count;
 				_tokens_orig = tokens_orig;

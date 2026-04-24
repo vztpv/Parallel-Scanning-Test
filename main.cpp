@@ -10,6 +10,7 @@
 
 #include <coroutine>
 #include <iostream>
+#include <fstream>
 #include <optional>
 #include <string>
 #include <vector>
@@ -176,7 +177,7 @@ namespace clau_test {
 
 }
 
-int main(void)
+int main(int argc, char* argv[])
 {
     //clau_test::run();
 
@@ -184,9 +185,9 @@ int main(void)
 
 	clau::LoadData test;
 
-	for (int i = 0; i < 3; ++i) {
+	for (int i = 0; i < 5; ++i) {
 		int a = clock();
-		test.LoadDataFromFile("citylots.json", 0, 0, true); // 1, 0
+		test.LoadDataFromFile(argv[1], 0, 0, false); // 1, 0
 		int b = clock();
 
 		std::cout << "test end " << b - a << "ms\n";
