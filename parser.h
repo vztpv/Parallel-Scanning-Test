@@ -325,7 +325,7 @@ namespace clau {
 
 					// 이전 backslash check.
 					if (backslash_on >= 0) {
-						if (bit_idx == (backslash_on + 1) % 32) {
+						if (i + bit_idx == backslash_on) {
 							backslash_on = -1;
 							mask = _blsr_u32(mask);
 							continue;
@@ -354,7 +354,8 @@ namespace clau {
 						//}
 
 						token_first = actual_idx + 2;
-						backslash_on = bit_idx;
+
+						backslash_on = actual_idx + 1;
 
 						// 만약 이스케이프 문자가 청크 내에 있다면, 마스크에서 다음 비트를 지워야 할 수도 있음
 						// (단순화를 위해 이 부분은 스칼라 예외 처리나 마스크 조작이 필요합니다)
