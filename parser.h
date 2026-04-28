@@ -353,7 +353,7 @@ namespace clau {
 							//token_arr[token_count++] = Utility::Get(actual_idx + 1, 1, text);
 						//}
 
-						token_first = actual_idx + 2;
+						token_first = actual_idx + 1;
 
 						backslash_on = actual_idx + 1;
 
@@ -411,21 +411,7 @@ namespace clau {
 					case '\\':
 					{
 						flush_word(i);
-						
-						//token_arr[token_count++] =
-						//		Utility::Get(i + num, 1, nullptr);
-
-						if (i + 1 < length) {
-							token_first = i + 2;
-							++i;
-							//token_arr[token_arr_count++] =
-							//	Utility::Get(i + num, 1, p);
-						}
-						else {
-							//token_arr[token_arr_count++] = Utility::Get(i + num, 1, p);
-
-							token_first = i + 1;
-						}
+						token_first = i;
 					}
 					break;
 
@@ -786,6 +772,9 @@ namespace clau {
 							if (Utility::GetType(_text[p->start()]) == TokenType::QUOTED) {
 								state = 1; start_token = p;
 							}
+							else if (Utility::GetType(_text[p->start()]) == TokenType::BACK_SLUSH) {
+								// todo - error!
+							}
 							else {
 								token_arr[count] = *p;
 								count++;
@@ -822,6 +811,9 @@ namespace clau {
 						if (state == 0) {
 							if (Utility::GetType(_text[p->start()]) == TokenType::QUOTED) {
 								state = 1; start_token = p;
+							}
+							else if (Utility::GetType(_text[p->start()]) == TokenType::BACK_SLUSH) {
+								// todo - error!
 							}
 							else {
 								token_arr[count] = *p;
@@ -967,8 +959,10 @@ namespace clau {
 			auto c = std::chrono::steady_clock::now();
 
 			int state = quote_count[0] % 2;
-
+			
 			for (int i = 1; i < thr_num; ++i) {
+				std::cout << " last state " << state << "\n";
+
 				if (state == 1) {
 					auto& sz = token_arr_size[i - 1][0];
 
