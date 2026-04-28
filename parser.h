@@ -348,7 +348,7 @@ namespace clau {
 					}
 					else if (ch == '\\') {
 						// 이스케이프 문자 처리 (백슬래시 + 다음 글자 1개)
-						token_arr[token_count++] = Utility::Get(actual_idx, 1, text);
+						//token_arr[token_count++] = Utility::Get(actual_idx, 1, text);
 						//if (actual_idx + 1 < length) {
 							//token_arr[token_count++] = Utility::Get(actual_idx + 1, 1, text);
 						//}
@@ -412,8 +412,8 @@ namespace clau {
 					{
 						flush_word(i);
 						
-						token_arr[token_count++] =
-								Utility::Get(i + num, 1, nullptr);
+						//token_arr[token_count++] =
+						//		Utility::Get(i + num, 1, nullptr);
 
 						if (i + 1 < length) {
 							token_first = i + 2;
@@ -771,7 +771,7 @@ namespace clau {
 
 
 		static void _Scanning2(char* text, int64_t num, const int64_t length,
-			Token*& token_arr, int64_t token_arr_size, std::array<int64_t, 2>& _token_arr_size, bool is_last, std::array<int, 2>& _last_state, int id,
+			Token*& token_arr, int64_t token_arr_size, std::array<int64_t, 1>& _token_arr_size, bool is_last, std::array<int, 1>& _last_state, int id,
 			const int64_t quote_count) {
 
 				if (quote_count % 2 == 1) { // start state == 1
@@ -787,33 +787,29 @@ namespace clau {
 								state = 1; start_token = p;
 							}
 							else {
-								token_arr[length + count] = *p;
+								token_arr[count] = *p;
 								count++;
 							}
 						}
 						else { // state == 1
 							if (Utility::GetType(_text[p->start()]) == TokenType::QUOTED) {
-								token_arr[length + count].start() = start_token->start();
-								token_arr[length + count].len() = p->start() - start_token->start() + 1;
+								token_arr[count].start() = start_token->start();
+								token_arr[count].len() = p->start() - start_token->start() + 1;
 								count++;
 
 								state = 0;
-							}
-							else if (Utility::GetType(_text[p->start()]) == BACK_SLUSH) {
-								if (is_last && p + 1 >= token_arr_end) break;
-								if (p->start() + 1 == (p + 1)->start()) ++p;
 							}
 						}
 					}
 
 					if (state == 1) {
-						token_arr[length + count].start() = start_token->start();
-						token_arr[length + count].len() = length - 1 - (start_token->start() - num);
+						token_arr[count].start() = start_token->start();
+						token_arr[count].len() = length - 1 - (start_token->start() - num);
 						count++;
 					}
 
-					_last_state[1] = state;
-					_token_arr_size[1] = count;
+					_last_state[0] = state;
+					_token_arr_size[0] = count;
 				}
 
 				if (quote_count % 2 == 0) {
@@ -839,10 +835,6 @@ namespace clau {
 								count++;
 
 								state = 0;
-							}
-							else if (Utility::GetType(_text[p->start()]) == BACK_SLUSH) {
-								if (is_last && p + 1 >= token_arr_end) break;
-								if (p->start() + 1 == (p + 1)->start()) ++p;
 							}
 						}
 					}
@@ -909,7 +901,7 @@ namespace clau {
 
 			auto a = std::chrono::steady_clock::now();
 			Token* tokens_orig = nullptr;
-			int64_t now_capacity = 2 * (length + 1);
+			int64_t now_capacity = 1 * (length + 1);
 
 			if (_tokens_orig) {
 				if (now_capacity <= _tokens_orig_size) {
@@ -918,13 +910,13 @@ namespace clau {
 				else {
 					free(_tokens_orig);
 
-					tokens_orig = (Token*)calloc(2 * (length + 1), sizeof(Token));
-					_tokens_orig_size = 2 * (length + 1);
+					tokens_orig = (Token*)calloc(1 * (length + 1), sizeof(Token));
+					_tokens_orig_size = 1 * (length + 1);
 				}
 			}
 			else {
-				tokens_orig = (Token*)calloc(2 * (length + 1), sizeof(Token));
-				_tokens_orig_size = 2 * (length + 1);
+				tokens_orig = (Token*)calloc(1 * (length + 1), sizeof(Token));
+				_tokens_orig_size = 1 * (length + 1);
 			}
 
 			if (!tokens_orig) {
@@ -934,13 +926,13 @@ namespace clau {
 			std::vector<Token*> tokens(thr_num);
 			tokens[0] = tokens_orig;
 			for (int64_t i = 1; i < thr_num; ++i) {
-				tokens[i] = tokens[i - 1] + 2 * (last[i - 1] - start[i - 1]);
+				tokens[i] = tokens[i - 1] + 1 * (last[i - 1] - start[i - 1]);
 			}
 
 			int64_t token_count = 0;
 
-			std::vector<std::array<int64_t, 2>> token_arr_size(thr_num);
-			std::vector<std::array<int, 2>> last_state(thr_num);
+			std::vector<std::array<int64_t, 1>> token_arr_size(thr_num);
+			std::vector<std::array<int, 1>> last_state(thr_num);
 			std::vector<int64_t> quote_count(thr_num, 0);
 
 			for (int i = 0; i < thr_num; ++i) {
@@ -954,7 +946,6 @@ namespace clau {
 			}
 			auto b = std::chrono::steady_clock::now();
 
-
 			{
 				int i = 0;
 				thr[i] = std::thread(_Scanning2, text + start[i], start[i], last[i] - start[i], std::ref(tokens[i]), std::ref(token_arr_size[i][0]), std::ref(token_arr_size[i]),
@@ -966,6 +957,8 @@ namespace clau {
 				thr[i] = std::thread(_Scanning2, text + start[i], start[i], last[i] - start[i], std::ref(tokens[i]), std::ref(token_arr_size[i][0]), std::ref(token_arr_size[i]),
 					i == thr_num - 1, std::ref(last_state[i]), i, quote_count[i - 1]);
 			}
+
+			// chk quote_count[thr_num - 1] is even!
 
 			for (int i = 0; i < thr_num; ++i) {
 				thr[i].join();
@@ -984,19 +977,19 @@ namespace clau {
 						sz--;
 
 						{ // state == 1
-							tokens[i][0].len() = (tokens[i] + last[i] - start[i])[0].start() + (tokens[i] + last[i] - start[i])[0].len()
+							tokens[i][0].len() = (tokens[i])[0].start() + (tokens[i])[0].len()
 								- _start;
 							tokens[i][0].start() = _start;
 						}
 											
-						std::memcpy(tokens[i] + 1, tokens[i] + last[i] - start[i] + 1,
-							sizeof(Token) * (token_arr_size[i][1] - 1));
+					//	std::memcpy(tokens[i] + 1, tokens[i] + last[i] - start[i] + 1,
+					//		sizeof(Token) * (token_arr_size[i][1] - 1));
 					}
 					else {
 						std::cout << "chk ...........1\n";
 					}
 					
-					token_arr_size[i][0] = token_arr_size[i][1];
+					//token_arr_size[i][0] = token_arr_size[i][1];
 				}
 				state = quote_count[i] % 2; // last_state[i][state];
 			}
@@ -1312,7 +1305,7 @@ namespace clau {
 
 			{
 				fseek(inFile, 0, SEEK_END);
-				int64_t length = ftell(inFile);
+				int64_t length = _ftelli64(inFile);
 				fseek(inFile, 0, SEEK_SET);
 
 				Utility::BomType x = Utility::ReadBom(inFile);
