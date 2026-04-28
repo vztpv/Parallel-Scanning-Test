@@ -353,7 +353,7 @@ namespace clau {
 							//token_arr[token_count++] = Utility::Get(actual_idx + 1, 1, text);
 						//}
 
-						token_first = actual_idx + 1;
+						token_first = actual_idx;
 
 						backslash_on = actual_idx + 1;
 
