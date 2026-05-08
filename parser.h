@@ -1016,7 +1016,7 @@ namespace clau {
 				if (t < thr_num - 1 && token_arr_size[t][0] > 0) {
 					tokens[t][token_arr_size[t][0]] = tokens[t + 1][0];
 				}
-				else {
+				else if (token_arr_size[t][0] > 0) {
 					tokens[t][token_arr_size[t][0]] = length;
 				}
 				//}
