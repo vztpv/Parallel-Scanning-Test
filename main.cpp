@@ -1,4 +1,5 @@
 ﻿
+
 //#include "mimalloc-new-delete.h"
 
 
@@ -185,7 +186,7 @@ int main(int argc, char* argv[])
 
 	clau::LoadData test;
 
-	for (int i = 0; i < 16; ++i) {
+	for (int i = 0; i < 10; ++i) {
 		int a = clock();
 		test.LoadDataFromFile(argv[1], 0, 0, true); // 1, 0
 		int b = clock();

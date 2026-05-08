@@ -59,25 +59,28 @@ namespace clau {
 		return _mm256_movemask_epi8(all_delimiters);
 	}
 
-
+	/*
 	struct Token {
 	private:
 		uint32_t _start;
-		uint32_t _len;
+		//uint32_t _len;
 	public:
 		uint32_t& start() {
 			return _start;
 		}
-		uint32_t& len() {
-			return _len;
-		}
+		//uint32_t& len() {
+		//	return _len;
+		//}
 		uint32_t start() const {
 			return _start;
 		}
-		uint32_t len() const {
-			return _len;
-		}
+		//uint32_t len() const {
+		//	return _len;
+		//}
 	};
+	*/
+
+	using Token = uint32_t;
 
 	namespace LoadDataOption
 	{
@@ -221,8 +224,8 @@ namespace clau {
 			Token token;
 
 			//token, text) = TokenType::END;
-			token.len() = length;
-			token.start() = position;
+			//token.len() = length;
+			token = position;
 
 			return token;
 		}
@@ -262,10 +265,11 @@ namespace clau {
 				return TokenType::STRING;
 		}
 
-		static void PrintToken(std::ostream& out, const char* buffer, Token token) {
+		static void PrintToken(std::ostream& out, const char* buffer, const Token& token) {
 			if (out) {
-				//std::cout << std::string_view(buffer + token.start(), token.len());
-				out << std::string_view(buffer + token.start(), token.len());
+				uint32_t len = *((&token) + 1) - token;
+				//std::cout << std::string_view(buffer + token, token.len());
+				out << std::string_view(buffer + token, len);
 				//std::cout << Utility::GetIdx(token) << " " << Utility::GetLength(token) << "\n";
 				//std::cout << std::string_view(buffer + Utility::GetIdx(token), Utility::GetLength(token));
 			}
@@ -769,10 +773,10 @@ namespace clau {
 
 					for (Token* p = token_arr; p != token_arr_end; ++p) {
 						if (state == 0) {
-							if (Utility::GetType(_text[p->start()]) == TokenType::QUOTED) {
+							if (Utility::GetType(_text[(*p)]) == TokenType::QUOTED) {
 								state = 1; start_token = p;
 							}
-							else if (Utility::GetType(_text[p->start()]) == TokenType::BACK_SLUSH) {
+							else if (Utility::GetType(_text[(*p)]) == TokenType::BACK_SLUSH) {
 								// todo - error!
 							}
 							else {
@@ -781,9 +785,9 @@ namespace clau {
 							}
 						}
 						else { // state == 1
-							if (Utility::GetType(_text[p->start()]) == TokenType::QUOTED) {
-								token_arr[count].start() = start_token->start();
-								token_arr[count].len() = p->start() - start_token->start() + 1;
+							if (Utility::GetType(_text[(*p)]) == TokenType::QUOTED) {
+								token_arr[count] = (*start_token);
+								//token_arr[count].len() = (*p) - (*start_token) + 1;
 								count++;
 
 								state = 0;
@@ -792,8 +796,8 @@ namespace clau {
 					}
 
 					if (state == 1) {
-						token_arr[count].start() = start_token->start();
-						token_arr[count].len() = length - 1 - (start_token->start() - num);
+						token_arr[count] = (*start_token);
+						//token_arr[count].len() = length - 1 - ((*start_token) - num);
 						count++;
 					}
 
@@ -809,10 +813,10 @@ namespace clau {
 					Token* token_arr_end = token_arr + token_arr_size;
 					for (Token* p = token_arr; p != token_arr_end; ++p) {
 						if (state == 0) {
-							if (Utility::GetType(_text[p->start()]) == TokenType::QUOTED) {
+							if (Utility::GetType(_text[(*p)]) == TokenType::QUOTED) {
 								state = 1; start_token = p;
 							}
-							else if (Utility::GetType(_text[p->start()]) == TokenType::BACK_SLUSH) {
+							else if (Utility::GetType(_text[(*p)]) == TokenType::BACK_SLUSH) {
 								// todo - error!
 							}
 							else {
@@ -821,9 +825,9 @@ namespace clau {
 							}
 						}
 						else { // state == 1
-							if (Utility::GetType(_text[p->start()]) == TokenType::QUOTED) {
-								token_arr[count].start() = start_token->start();
-								token_arr[count].len() = p->start() - start_token->start() + 1;
+							if (Utility::GetType(_text[(*p)]) == TokenType::QUOTED) {
+								token_arr[count] = (*start_token);
+								//token_arr[count].len() = (*p) - (*start_token) + 1;
 								count++;
 
 								state = 0;
@@ -832,8 +836,8 @@ namespace clau {
 					}
 
 					if (state == 1) {
-						token_arr[count].start() = start_token->start();
-						token_arr[count].len() = length - 1 - (start_token->start() - num);
+						token_arr[count] = (*start_token);
+						//token_arr[count].len() = length - 1 - ((*start_token) - num);
 						count++;
 					}
 
@@ -902,12 +906,12 @@ namespace clau {
 				else {
 					free(_tokens_orig);
 
-					tokens_orig = (Token*)calloc(1 * (length + 1), sizeof(Token));
+					tokens_orig = (Token*)calloc(1 * (length + thr_num + 1), sizeof(Token));
 					_tokens_orig_size = 1 * (length + 1);
 				}
 			}
 			else {
-				tokens_orig = (Token*)calloc(1 * (length + 1), sizeof(Token));
+				tokens_orig = (Token*)calloc(1 * (length + thr_num + 1), sizeof(Token));
 				_tokens_orig_size = 1 * (length + 1);
 			}
 
@@ -961,19 +965,19 @@ namespace clau {
 			int state = quote_count[0] % 2;
 			
 			for (int i = 1; i < thr_num; ++i) {
-				std::cout << " last state " << state << "\n";
+				//std::cout << " last state " << state << "\n";
 
 				if (state == 1) {
 					auto& sz = token_arr_size[i - 1][0];
 
 					if (sz > 0) {
-						auto _start = tokens[i - 1][sz - 1].start();
+						auto _start = tokens[i - 1][sz - 1];
 						sz--;
 
 						{ // state == 1
-							tokens[i][0].len() = (tokens[i])[0].start() + (tokens[i])[0].len()
-								- _start;
-							tokens[i][0].start() = _start;
+							//tokens[i][0].len() = (tokens[i])[0] + (tokens[i])[0].len()
+							//	- _start;
+							tokens[i][0] = _start;
 						}
 											
 					//	std::memcpy(tokens[i] + 1, tokens[i] + last[i] - start[i] + 1,
@@ -1003,21 +1007,35 @@ namespace clau {
 
 			std::cout << "state is " << state << "\n";
 
+			for (int t = 0; t < thr_num; ++t) {
+				real_token_arr_count += token_arr_size[t][0];
+			}
+
+			for (int t = 0; t < thr_num; ++t) {
+				//if (1) {
+				if (t < thr_num - 1 && token_arr_size[t][0] > 0) {
+					tokens[t][token_arr_size[t][0]] = tokens[t + 1][0];
+				}
+				else {
+					tokens[t][token_arr_size[t][0]] = length;
+				}
+				//}
+			}
+
 			if (false) {
 				std::ofstream outfile("output.json", std::ios::binary);
 
 				if (outfile) {
 					for (int t = 0; t < thr_num; ++t) {
-						if (1) {
-							for (int i = 0; i < token_arr_size[t][0]; ++i) {
-								Utility::PrintToken(outfile, text, tokens[t][i]);
-								outfile << "\n";
+						//if (1) {
+						for (int i = 0; i < token_arr_size[t][0]; ++i) {
+							Utility::PrintToken(outfile, text, tokens[t][i]);
+							outfile << "|";
 
-								//	std::cout << "|\n";
-								//	getchar();
-							}
+							//	std::cout << "|\n";
+							//	getchar();
 						}
-						real_token_arr_count += token_arr_size[t][0];
+						//}
 					}
 					outfile.close();
 				}
