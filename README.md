@@ -1,12 +1,62 @@
 # Parallel-Scanning-Test
-Parallel Scanning Test using std::thread
-# Ideas
-1. json text length >> json token (candidate) array length
-2. " here " (state 1) or "   "  here  (state 0) or here  "    " (state 0)
-3. run two cases : 1) start_state == 0, 2) start_state == 1
-4. first_state is zero
-5. construct last_state[thr_num][2] // used thread num
-6. next_start_state = last_state[t][start_state];
+Parallel Scanning Test using std::thread, with msvc.
+
+# 병렬 스캐닝 알고리즘 요약
+
+## 전체 구조 (`ScanningNew`)
+
+```
+파일 로드 → 텍스트 분할 → 병렬 1단계(토큰 후보 추출) → 병렬 2단계(따옴표 병합) → 경계 연결
+```
+
+---
+
+## 1단계: 텍스트 분할
+
+스레드 수(`thr_num`)만큼 텍스트를 나누되, **반드시 구분자(`{`, `}`, `,`, 공백 등) 위치에서 분할**한다. 단어 중간을 자르지 않기 위해서다.
+
+---
+
+## 2단계: 병렬 토큰 후보 추출 (`ScanWithSimdJsonStyle`)
+
+각 스레드가 자신의 청크를 담당하며, **AVX2(32바이트)** 로 구분자 위치를 비트마스크로 추출한다.
+
+```
+[chunk 32바이트] → get_delimiter_mask_avx2() → uint32_t mask
+→ _tzcnt_u32로 구분자 위치 점프 → 토큰 후보 배열 생성
+```
+
+- 공백 → 버림
+- `"`, `,`, `{`, `}` 등 → 단일 토큰
+- `\` → 다음 문자와 묶음 처리
+- 구분자 사이 문자열 → word 토큰으로 flush
+
+---
+
+## 3단계: 병렬 따옴표 병합 (`_Scanning2`)
+
+1단계 결과는 따옴표 안의 내용도 낱개 토큰으로 쪼개져 있다. 이를 `"..."` 단위로 병합한다.
+
+각 청크의 **누적 따옴표 카운트(짝수/홀수)** 를 접두사 합으로 계산해서, 각 청크가 따옴표 안에서 시작하는지 밖에서 시작하는지 판단한다.
+
+```
+quote_count[i] += quote_count[i-1]  // prefix sum
+→ quote_count[i-1] % 2 == 1 이면 이 청크는 따옴표 안에서 시작
+```
+
+---
+
+## 4단계: 청크 경계 연결 (sequential)
+
+인접한 두 청크의 경계에서 따옴표가 열린 채로 잘린 경우, 앞 청크의 마지막 토큰과 뒤 청크의 첫 토큰을 **하나로 합친다.**
+
+```
+앞 청크 마지막 토큰.start + 뒤 청크 첫 토큰의 끝
+→ 뒤 청크 첫 토큰을 확장하여 하나의 quoted 토큰으로 통합
+```
+
+---
+
 # ToDo?
 1. chk utf-8
 2. chk \uXXXX ?
